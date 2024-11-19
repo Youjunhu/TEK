@@ -2,6 +2,7 @@
 !Particle in cell simulation of low-frequency electromagnetic turbulence in tokamak plasmas
 !using gyrokinetic and/or fully kinetic model for ions, and gyrokinetic for electrons
 !Main devevloper: Youjun Hu, Email: yjhu@ipp.cas.cn, youjunhu@gmail.com
+!EM version is in development
 
 program main
   use constants,only:p_, twopi,pi,kev,two,mu0, one_half, zero
