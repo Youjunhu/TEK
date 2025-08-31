@@ -4,7 +4,7 @@ MODULE pputil
   use constants, only : p_
   IMPLICIT NONE
   PRIVATE
-  PUBLIC :: ppinit, ppexit, init_pmove, end_pmove, pmove, pmove2
+  PUBLIC :: ppinit, ppexit, init_pmove, pmove, pmove2
 !
   INTEGER, SAVE :: me, nvp,GCLR,TCLR
   INTEGER, SAVE :: pmove_tag=0
@@ -351,31 +351,15 @@ CONTAINS
 !----------------------------------------------------------------------!
   END SUBROUTINE pmove2
 
-!===========================================================================
-  SUBROUTINE end_pmove(ierr)
-!
-    INCLUDE 'mpif.h'
-    INTEGER, INTENT(OUT) :: ierr
-!
-!   Local vars
-!----------------------------------------------------------------------!
-    ierr=1 !yj
-  END SUBROUTINE end_pmove
-!
-!
+
   SUBROUTINE ppinit(ntube,com1,com2)
     use domain_decomposition, only : myid, numprocs
-    !INCLUDE 'mpif.h'
-!    use petscksp
     use mpi
-!#include <petsc/finclude/petscksp.h>
     INTEGER, INTENT(IN) :: ntube
     INTEGER, INTENT(OUT) :: com1,com2
     INTEGER :: ierr
 
-    !call PetscInitialize(PETSC_NULL_CHARACTER,ierr)
     me = myid
-    me=myid
     GCLR=INT(me/ntube)
     TCLR=MOD(me,ntube)
     CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,GCLR,TCLR,GRID_COMM,ierr)
@@ -384,7 +368,7 @@ CONTAINS
     com2=GRID_COMM
     nvp=numprocs/ntube
   END SUBROUTINE ppinit
-!
+
 !===========================================================================
   SUBROUTINE ppexit
     INTEGER :: ierr

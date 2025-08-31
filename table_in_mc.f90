@@ -3,15 +3,16 @@ module table_in_mc !used in computing guiding-center drift
   implicit none
   save
   real(p_), dimension(:,:), allocatable :: br_mc, bz_mc, bphi_mc, &
-       & bp_mc, b_mc, bdgxcgy, & !bdgxcgy=B0_dot_grad_x_cross_grad_y
-       & w1,w2,w3,w4,w5,w5p,w6,w7,w8,w8p,w9,w10,w12,w13,w14,w15
+       & bp_mc, b_mc, bdgxcgy, & !here bdgxcgy is B0_dot_grad_x_cross_grad_y. Similar names for other cooordinate combination.
+       & bdgxcgz, bdgycgz, &
+       & w1,w2,w3,w4,w5,w5p,w6,w7,w8,w8p,w9,w10,w12,w13
 
 contains
 
   subroutine prepare_table_in_mc()
     use constants,only: one
     use domain_decomposition,only: myid
-    use magnetic_coordinates,only: mpol, nflux, r_mc,z_mc,jacobian,radcor_1d_array, &
+    use magnetic_coordinates,only: mpol, nrad, r_mc,z_mc,jacobian,xgrid, &
          &  GSpsi_prime, grad_psi, grad_alpha, &
          & grad_psi_dot_grad_alpha, grad_psi_dot_grad_theta, grad_alpha_dot_grad_theta, &
          & grad_psi_r, grad_psi_z, grad_theta_r, grad_theta_z, &
@@ -38,32 +39,32 @@ contains
     real(p_) :: dalpha_dr_val,dalpha_dz_val,dalpha_dphi_val
     integer :: i,j
 
-    allocate(w1(mpol,nflux))
-    allocate(w2(mpol,nflux))
-    allocate(w3(mpol,nflux))
-    allocate(w4(mpol,nflux))
-    allocate(w5(mpol,nflux))
-    allocate(w5p(mpol,nflux))
-    allocate(w6(mpol,nflux))
-    allocate(w7(mpol,nflux))
-    allocate(w8(mpol,nflux))
-    allocate(w8p(mpol,nflux))
-    allocate(w9(mpol,nflux))
-    allocate(w10(mpol,nflux))
-    allocate(w12(mpol,nflux))
-    allocate(w13(mpol,nflux))
-    allocate(w14(mpol,nflux))
-    allocate(w15(mpol,nflux))
-    allocate(b_mc(mpol,nflux))
-    allocate(br_mc(mpol,nflux))
-    allocate(bz_mc(mpol,nflux))
-    allocate(bphi_mc(mpol,nflux))
-    allocate(bp_mc(mpol,nflux))
-    allocate(bdgxcgy(mpol,nflux))
+    allocate(w1(mpol,nrad))
+    allocate(w2(mpol,nrad))
+    allocate(w3(mpol,nrad))
+    allocate(w4(mpol,nrad))
+    allocate(w5(mpol,nrad))
+    allocate(w5p(mpol,nrad))
+    allocate(w6(mpol,nrad))
+    allocate(w7(mpol,nrad))
+    allocate(w8(mpol,nrad))
+    allocate(w8p(mpol,nrad))
+    allocate(w9(mpol,nrad))
+    allocate(w10(mpol,nrad))
+    allocate(w12(mpol,nrad))
+    allocate(w13(mpol,nrad))
+    allocate(bdgxcgz(mpol,nrad))
+    allocate(bdgycgz(mpol,nrad))
+    allocate(bdgxcgy(mpol,nrad))
+    allocate(b_mc(mpol,nrad))
+    allocate(br_mc(mpol,nrad))
+    allocate(bz_mc(mpol,nrad))
+    allocate(bphi_mc(mpol,nrad))
+    allocate(bp_mc(mpol,nrad))
 
 
-    do j=1,nflux
-       radcor=radcor_1d_array(j)
+    do j=1,nrad
+       radcor=xgrid(j)
        do i=1,mpol
           r=r_mc(i,j)
           z=z_mc(i,j)
@@ -83,10 +84,10 @@ contains
           unitb_dot_curl_unitb=unitbr*curl_unitb_rcomp +unitbphi*curl_unitb_phicomp&
                & +unitbz*curl_unitb_zcomp
 
-          dradial_dr_val=grad_psi_r(i,j)
-          dradial_dz_val=grad_psi_z(i,j) 
-          dtheta_dr_val=grad_theta_r(i,j)
-          dtheta_dz_val=grad_theta_z(i,j)
+          dradial_dr_val = grad_psi_r(i,j)
+          dradial_dz_val = grad_psi_z(i,j) 
+          dtheta_dr_val = grad_theta_r(i,j)
+          dtheta_dz_val = grad_theta_z(i,j)
           ddelta_dr_val = -grad_alpha_r(i,j)
           ddelta_dz_val = -grad_alpha_z(i,j)
 
@@ -136,9 +137,9 @@ contains
           w13(i,j)=GSpsi_prime/bval*(grad_psi_dot_grad_theta_val*grad_alpha_val**2 &
                & -grad_psi_dot_grad_alpha_val*grad_alpha_dot_grad_theta_val)
 
-          w14(i,j) = bphival*(dradial_dz_val*dtheta_dr_val-dradial_dr_val*dtheta_dz_val)
-          w15(i,j)=brval*(dtheta_dz_val)/r &
-               & + bphival*(dalpha_dz_val*dtheta_dr_val-dalpha_dr_val*dtheta_dz_val) &
+          bdgxcgz(i,j) = bphival*(dradial_dz_val*dtheta_dr_val-dradial_dr_val*dtheta_dz_val)
+          bdgycgz(i,j) = brval*dtheta_dz_val/r &
+               & + bphival*(dalpha_dz_val*dtheta_dr_val - dalpha_dr_val*dtheta_dz_val) &
                & + bzval*(-dtheta_dr_val)/r
           bdgxcgy(i,j) = bval**2/GSpsi_prime
        enddo
@@ -151,8 +152,8 @@ contains
       character(8)::filename
       integer:: file_unit,u
       open(newunit=u,file='grad_theta_alpha.txt')
-      do j=1,nflux
-         radcor=radcor_1d_array(j)
+      do j=1,nrad
+         radcor=xgrid(j)
          do i=1,mpol
 !!$          write(u,*) r_mc(i,j), z_mc(i,j), dtheta_dr_val,dtheta_dz_val,&
 !!$               & sqrt(dtheta_dz_val**2+dtheta_dr_val**2), ddelta_dr_val,  ddelta_dz_val,&
@@ -174,7 +175,7 @@ contains
 !!$  file_unit=myid+311
 !!$  open(file_unit,file=filename)
 !!$  do i=1,mpol
-!!$     do j=1,nflux
+!!$     do j=1,nrad
 !!$        write(file_unit,'(2i8.4,3(1pe14.5))')  i,j,grad_alpha(i,j),grad_psi_dot_grad_alpha(i,j), grad_psi(i,j)
 !!$     enddo
 !!$     write(file_unit,*)
@@ -198,54 +199,97 @@ contains
   function b_mc_func(theta,radcor) result(f)
     use constants,only:p_
     use table_in_mc,only: b_mc
-    use magnetic_coordinates,only:mpol,nflux,theta_1d_array,radcor_1d_array
-    use interpolate_module,only: linear_2d_interpolation
+    use magnetic_coordinates,only:mpol,nrad,zgrid,xgrid
+    use interpolate_module,only: linear_2d_interpolate
 
     implicit none
     real(p_)::theta,radcor,f
-    call linear_2d_interpolation(mpol,nflux,theta_1d_array,radcor_1d_array,b_mc,theta,radcor,f)
+    call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,b_mc,theta,radcor,f)
   end function b_mc_func
 
   function br_mc_func(theta,radcor) result(f)
     use constants,only:p_
     use table_in_mc,only: br_mc
-    use magnetic_coordinates,only:mpol,nflux,theta_1d_array,radcor_1d_array
-    use interpolate_module,only: linear_2d_interpolation
+    use magnetic_coordinates,only:mpol,nrad,zgrid,xgrid
+    use interpolate_module,only: linear_2d_interpolate
 
     implicit none
     real(p_)::theta,radcor,f
-    call linear_2d_interpolation(mpol,nflux,theta_1d_array,radcor_1d_array,br_mc,theta,radcor,f)
+    call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,br_mc,theta,radcor,f)
   end function br_mc_func
 
   function bz_mc_func(theta,radcor) result(f)
     use constants,only:p_
     use table_in_mc,only: bz_mc
-    use magnetic_coordinates,only:mpol,nflux,theta_1d_array,radcor_1d_array
-    use interpolate_module,only: linear_2d_interpolation
+    use magnetic_coordinates,only:mpol,nrad,zgrid,xgrid
+    use interpolate_module,only: linear_2d_interpolate
 
     implicit none
     real(p_)::theta,radcor,f
-    call linear_2d_interpolation(mpol,nflux,theta_1d_array,radcor_1d_array,bz_mc,theta,radcor,f)
+    call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,bz_mc,theta,radcor,f)
   end function bz_mc_func
 
 
   function bphi_mc_func(theta,radcor) result(f)
     use constants,only:p_
     use table_in_mc,only: bphi_mc
-    use magnetic_coordinates,only:mpol,nflux,theta_1d_array,radcor_1d_array
-    use interpolate_module,only: linear_2d_interpolation
+    use magnetic_coordinates,only:mpol,nrad,zgrid,xgrid
+    use interpolate_module,only: linear_2d_interpolate
     implicit none
     real(p_)::theta,radcor,f
-    call linear_2d_interpolation(mpol,nflux,theta_1d_array,radcor_1d_array,bphi_mc,theta,radcor,f)
+    call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,bphi_mc,theta,radcor,f)
   end function bphi_mc_func
 
-  function tor_shift_func(theta, radcor) result(z)
+pure real(p_)  function tor_shift_func(theta, radcor) result(z)
     use constants,only:p_, pi
-    use magnetic_coordinates,only:mpol,nflux,theta_1d_array,radcor_1d_array,tor_shift_mc
-    use interpolate_module, only : linear_2d_interpolation
+    use magnetic_coordinates,only:mpol,nrad,zgrid,xgrid,tor_shift_mc
+    use interpolate_module, only : linear_2d_interpolate
     implicit none
-    real(p_) :: theta, radcor,z
-    call linear_2d_interpolation(mpol,nflux,theta_1d_array,radcor_1d_array,tor_shift_mc,theta,radcor,z) !interpolating in magnetic coordinates to get tor_shift
+    real(p_), intent(in) :: theta, radcor
+    call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,tor_shift_mc,theta,radcor,z) !interpolating in magnetic coordinates to get tor_shift
   end function tor_shift_func
 
+
+pure real(p_)   function grad_psi_func(theta,radcor) result(f)
+    use constants, only: p_
+    use magnetic_coordinates, only: mpol, nrad, zgrid, xgrid, grad_psi
+    use interpolate_module, only: linear_2d_interpolate
+    implicit none
+    real(p_), intent(in) :: theta, radcor
+    call linear_2d_interpolate(mpol, nrad, zgrid, xgrid, grad_psi, theta, radcor, f)
+  end function grad_psi_func
+
+  pure real(p_) function minor_r_radcor(radcor) result (z)
+    use constants,only: p_, two,twopi
+    use magnetic_coordinates,only: nrad, xgrid, minor_r_array
+    use interpolate_module,only: linear_1d_interpolate
+    implicit none
+    real(p_),intent(in):: radcor
+
+    call linear_1d_interpolate(nrad, xgrid, minor_r_array, radcor, z)  
+  end function minor_r_radcor
+
+  pure real(p_) function radcor_minor_r(minor_r) result (z)
+    use constants,only: p_
+    use magnetic_coordinates,only: nrad,xgrid,minor_r_array
+    use interpolate_module,only: linear_1d_interpolate_nonuniform
+    implicit none
+    real(p_), intent(in):: minor_r
+
+    call linear_1d_interpolate_nonuniform(nrad, minor_r_array, xgrid, minor_r, z)
+
+  end function radcor_minor_r
+
+
+  pure real(p_) function minor_r_prime(radcor) result (z) !derivative of minor_r with respect to the radial coordinate
+    use constants,only: p_, two
+    use magnetic_coordinates,only: nrad,xgrid,minor_r_prime_array
+    use interpolate_module,only: linear_1d_interpolate
+    implicit none
+    real(p_), intent(in) :: radcor
+
+    call linear_1d_interpolate(nrad, xgrid, minor_r_prime_array, radcor, z)  
+  end function minor_r_prime
+
+  
 end module func_in_mc

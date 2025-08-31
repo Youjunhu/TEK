@@ -1,8 +1,5 @@
 subroutine mapping_cylindrical_to_magnetic_coordinates() !this to prepare numerical tables radcor(R,Z), theta(R,Z), and tor_shift(R,Z). Boris pusher works in cylindrical coordinates, we need these pre-mapping data to interpolate the Boris orbit into magnetic coordinates. Later I decide that tor_shift(R,Z) is not used in the rest of the program. The value of tor_shift and the various gradients of psi, theta, and alpha will be computed by interpolating the numerical table in magnetic coordinates (numerical talbes are created in "calculate_metric" routine)
-  use constants,only:p_
-  !  use magnetic_coordinates,only: mpol,nflux, r_mc, z_mc
-  !  use radial_module,only: r_axis,z_axis
-  use constants,only:pi
+  use constants, only: p_, pi
   use boundary,only: np_lcfs !,x_lcfs,z_lcfs
   use mapping_module,only:nx_mapping,nz_mapping
   use mapping_module,only:r_cyl,z_cyl,dr,dz,i0,j0 !as output
@@ -16,14 +13,12 @@ subroutine mapping_cylindrical_to_magnetic_coordinates() !this to prepare numeri
   real(p_):: theta(nx_mapping,nz_mapping),tor_shift(nx_mapping,nz_mapping)
   real(p_):: r_inner_surf(np_lcfs),z_inner_surf(np_lcfs),r_outer_surf(np_lcfs),z_outer_surf(np_lcfs)
 
-
   call choose_boundary_magnetic_surfaces_for_the_mapping(r_inner_surf,z_inner_surf,r_outer_surf,z_outer_surf)
-
   call create_cylindrical_grids(r_outer_surf,z_outer_surf,np_lcfs,nx_mapping,nz_mapping,r_cyl,z_cyl,dr,dz,i0,j0)
 
   do i=1,nx_mapping
      do j=1,nz_mapping
-!!$        call PNPOLY(r_cyl(i),z_cyl(j),r_mc(:,nflux),z_mc(:,nflux),mpol,INOUT1(i,j))
+!!$        call PNPOLY(r_cyl(i),z_cyl(j),r_mc(:,nrad),z_mc(:,nrad),mpol,INOUT1(i,j))
 !!$        call PNPOLY(r_cyl(i),z_cyl(j),r_mc(:,2),z_mc(:,2),mpol,INOUT2(i,j))
         call PNPOLY(r_cyl(i),z_cyl(j),r_outer_surf,z_outer_surf,np_lcfs,INOUT1(i,j))
         call PNPOLY(r_cyl(i),z_cyl(j),r_inner_surf,z_inner_surf,np_lcfs,INOUT2(i,j))
@@ -36,7 +31,7 @@ subroutine mapping_cylindrical_to_magnetic_coordinates() !this to prepare numeri
         if((inout1(i,j).eq. -1) .or. (inout2(i,j).eq.1)) within_region(i,j)=.false.
      enddo
   enddo
-  ! if(myid.eq.0) write(*,*) 'q_edge=',qfunc0(psi_func(r_mc(1,nflux),z_mc(1,nflux))) !value of q at boundary
+  ! if(myid.eq.0) write(*,*) 'q_edge=',qfunc0(psi_func(r_mc(1,nrad),z_mc(1,nrad))) !value of q at boundary
 !!$ if(myid.eq.0) call diagnostic1()
   ! call arrange_lcfs(x_lcfs,z_lcfs,np_lcfs,r_axis,z_axis)
 
@@ -68,8 +63,6 @@ subroutine mapping_cylindrical_to_magnetic_coordinates() !this to prepare numeri
         endif
      enddo
   enddo
-
-
 
 !!$  tor_shift_b=tor_shift
 !!$  do i=i0,nx_mapping
@@ -157,7 +150,7 @@ subroutine mapping(r,z,radcor,theta,tor_shift)
   psival=psi_func(r,z)
   radcor=radcor_as_func_of_pfn((psival-psi_axis)/(psi_lcfs-psi_axis))
 
-  call contour(x_lcfs,z_lcfs,np_lcfs,r_axis,z_axis,psival,x_contour,z_contour)
+  call contour(psival,x_contour,z_contour)
 
   call arc_length(x_contour,z_contour,np_lcfs,dl)
 !!$     sum=0.
@@ -268,7 +261,7 @@ subroutine mapping2(r,z,radcor,tor_shift_a,tor_shift_b)
 
   psival=psi_func(r,z)
   radcor=radcor_as_func_of_pfn((psival-psi_axis)/(psi_lcfs-psi_axis))
-  call contour(x_lcfs,z_lcfs,np_lcfs,r_axis,z_axis,psival,x_contour,z_contour)
+  call contour(psival,x_contour,z_contour)
 
   !  call calculate_toroidal_shift_total(psival,x_contour,z_contour,np_lcfs,dl,tor_shift_a) 
   call calculate_toroidal_shift_at_theta_cut(psival,x_contour,z_contour,np_lcfs,tor_shift_a,tor_shift_b) !calculate toroidal shift which is needed in the definition of the generalized toroidal angle
@@ -327,18 +320,18 @@ subroutine choose_boundary_magnetic_surfaces_for_the_mapping(r_inner_surf,z_inne
 
   psi_inner=psi_axis+pfn_inner*(psi_lcfs-psi_axis) 
   psi_val=(psi_axis+psi_inner)/two !the inner boundary for doing the mapping
-  call contour(x_lcfs,z_lcfs,np_lcfs,r_axis,z_axis,psi_val,r_inner_surf,z_inner_surf)
+  call contour(psi_val,r_inner_surf,z_inner_surf)
 
   psi_bdry=psi_axis+pfn_bdry*(psi_lcfs-psi_axis)
   psi_val=(psi_lcfs+psi_bdry)/two !the outer boundary for doing the mapping, which is chosen to be between lcfs and the outer boundary of the region in which magnetic_coordinates are availabe
-  call contour(x_lcfs,z_lcfs,np_lcfs,r_axis,z_axis,psi_val,r_outer_surf,z_outer_surf)
+  call contour(psi_val,r_outer_surf,z_outer_surf)
 
 end subroutine choose_boundary_magnetic_surfaces_for_the_mapping
 
 subroutine create_cylindrical_grids(r_outer_surf,z_outer_surf,np_lcfs,nx,nz,r,z,dr,dz,i0,j0)
-  !create rectangular box (with cylindrical grids in it) on poloidal plane with the boundary flux surface within the box and (r_axis,z_axis) is exactly on a grid point
+  !create rectangular box (with cylindrical grids in it) in the poloidal plane with the boundary flux surface within the box and (r_axis,z_axis) is exactly on a grid point
   use constants,only:p_
-  !  use magnetic_coordinates,only:r_mc, z_mc,mpol,nflux
+  !  use magnetic_coordinates,only:r_mc, z_mc,mpol,nrad
   use radial_module,only: r_axis,z_axis
   implicit none
   integer,intent(in):: np_lcfs,nx,nz
@@ -355,8 +348,8 @@ subroutine create_cylindrical_grids(r_outer_surf,z_outer_surf,np_lcfs,nx,nz,r,z,
   nzp=nz-1 !using a reduced number, so that I can append the array with an additional element
 
 !!$  do i=1,mpol !select the boundary magnetic surface
-!!$     r_mag_surf1(i)=r_mc(i,nflux)
-!!$     z_mag_surf1(i)=z_mc(i,nflux)
+!!$     r_mag_surf1(i)=r_mc(i,nrad)
+!!$     z_mag_surf1(i)=z_mc(i,nrad)
 !!$  enddo
 
   r_min=minval(r_outer_surf)
@@ -404,58 +397,74 @@ subroutine create_cylindrical_grids(r_outer_surf,z_outer_surf,np_lcfs,nx,nz,r,z,
 
   i0=i0+1 !the i index of the magnetic axis at the new array r
   j0=j0+1 !the j index of the magnetic axis at the new array z
-
+  block
+    use domain_decomposition, only : myid
+    integer :: u
+    if(myid==0) then
+       open(newunit=u,file='rzgrid.txt')
+       do i =1,nx
+          do j =1,nz
+             write(u,*) r(i), z(j)
+          enddo
+       enddo
+       close(u)
+    end if
+  endblock
 end subroutine create_cylindrical_grids
 
 
-subroutine interpolate_from_cylindrical_to_magnetic_coordinates(r0,z0,theta0,tor_shift0) !calculate the magnetic coordinats (theta0,tor_shift0) of (R0,Z0) by using interpolation, radcor0 is not calculated in this subroutine because I can use another reliable way to calculate radcor0 from (r0,z0), i.e., radcor0=radcor_as_func_of_pfn(pfn_func(r0,z0))
-  !to use this iterpolation, first to make sure that (r0,z0) is within the specfied region
-  use constants,only:p_,two,twopi
-  use mapping_module,only: r_cyl,z_cyl,dr,dz,radcor,theta_a,theta_b,tor_shift_a,i0,j0,tor_shift_b
-  use interpolate_module,only: linear_2d_interpolation_kernel
-  implicit none
-  real(p_),intent(in):: r0,z0
-  real(p_),intent(out):: theta0,tor_shift0
-  real(p_):: radcor_tmp(2,2),theta_tmp(2,2),tor_shift_tmp(2,2),qval
-  integer::i,j,ii,jj
-  real(p_):: radcor_as_func_of_pfn,pfn_func
-  !locate
-  i=floor((r0-r_cyl(1))/dr)+1
-  j=floor((z0-z_cyl(1))/dz)+1
+module map_to_mc
+contains
+  subroutine interpolate_from_cylindrical_to_magnetic_coordinates(r0,z0,theta0, tor_shift0)
+    !calculate the magnetic coordinats (theta0,tor_shift0) of (R0,Z0) by using interpolation,
+    !radcor0 is not calculated in this subroutine because I can use another reliable way to calculate radcor0 from (r0,z0), i.e., radcor0=radcor_as_func_of_pfn(pfn_func(r0,z0))
+    !to use this iterpolation, first to make sure that (r0,z0) is within the specfied region
+    use constants,only:p_,two,twopi
+    use mapping_module,only: r_cyl,z_cyl,dr,dz,radcor,theta_a,theta_b,tor_shift_a,i0,j0,tor_shift_b
+    use interpolate_module,only: linear_2d_interpolate_kernel
+    implicit none
+    real(p_),intent(in):: r0,z0
+    real(p_),intent(out):: theta0,tor_shift0
+    real(p_):: radcor_tmp(2,2),theta_tmp(2,2),tor_shift_tmp(2,2),qval
+    integer::i,j,ii,jj
+    real(p_):: radcor_as_func_of_pfn,pfn_func
 
-  !  2D interpolations to get radcor0, theta0, and tor_shift0
+    i=floor((r0-r_cyl(1))/dr)+1
+    j=floor((z0-z_cyl(1))/dz)+1
+
+    !  2D interpolations to get radcor0, theta0, and tor_shift0
 !!$  do ii=1,2
 !!$     do jj=1,2
 !!$        radcor_tmp(ii,jj)=radcor(i+ii-1,j+jj-1)
 !!$     enddo
 !!$  enddo
 !!$
-!!$  call linear_2d_interpolation_kernel(r_cyl(i),z_cyl(j),radcor_tmp,r0,z0,radcor0)
+!!$  call linear_2d_interpolate_kernel(r_cyl(i),z_cyl(j),radcor_tmp,r0,z0,radcor0)
 
-  !  radcor0=radcor_as_func_of_pfn(pfn_func(r0,z0))
+    !  radcor0=radcor_as_func_of_pfn(pfn_func(r0,z0))
 
 
-  do ii=1,2
-     do jj=1,2
-        theta_tmp(ii,jj)=theta_a(i+ii-1,j+jj-1)
-     enddo
-  enddo
+    do ii=1,2
+       do jj=1,2
+          theta_tmp(ii,jj)=theta_a(i+ii-1,j+jj-1)
+       enddo
+    enddo
 
 !!$ if(i>i0 .and. j+1.eq.j0) then !handle the boundary at the low-field-side midplane
 !!$theta_tmp(1,2)=twopi 
 !!$theta_tmp(2,2)=twopi 
 !!$endif
-  if(i<i0 .and. j.eq.j0) then !handle the boundary at the high-field-side (theta cut)
-     theta_tmp(1,1)=theta_b(i,j0)
-     theta_tmp(2,1)=theta_b(i+1,j0)
-  endif
-  call linear_2d_interpolation_kernel(r_cyl(i),z_cyl(j),theta_tmp,r0,z0,theta0)
+    if(i<i0 .and. j.eq.j0) then !handle the boundary at the high-field-side (theta cut)
+       theta_tmp(1,1)=theta_b(i,j0)
+       theta_tmp(2,1)=theta_b(i+1,j0)
+    endif
+    call linear_2d_interpolate_kernel(r_cyl(i),z_cyl(j),theta_tmp,r0,z0,theta0)
 
-  do ii=1,2
-     do jj=1,2
-        tor_shift_tmp(ii,jj)=tor_shift_a(i+ii-1,j+jj-1)
-     enddo
-  enddo
+    do ii=1,2
+       do jj=1,2
+          tor_shift_tmp(ii,jj)=tor_shift_a(i+ii-1,j+jj-1)
+       enddo
+    enddo
 
 !!$if(i>i0 .and. j+1.eq.j0) then !handle the boundary at the low-field-side midplne
 !!$!qval=2.3074808101594884*1.0004
@@ -466,57 +475,56 @@ subroutine interpolate_from_cylindrical_to_magnetic_coordinates(r0,z0,theta0,tor
 !!$tor_shift_tmp(2,2)=tor_shift_b(i+1,j0)
 !!$endif
 
-  if(i<i0 .and. j.eq.j0) then !handle the boundary at the high-field-side midplane (theta cut)
-     tor_shift_tmp(1,1)=tor_shift_b(i,j0)
-     tor_shift_tmp(2,1)=tor_shift_b(i+1,j0)
-  endif
+    if(i<i0 .and. j.eq.j0) then !handle the boundary at the high-field-side midplane (theta cut)
+       tor_shift_tmp(1,1)=tor_shift_b(i,j0)
+       tor_shift_tmp(2,1)=tor_shift_b(i+1,j0)
+    endif
 
-  call linear_2d_interpolation_kernel(r_cyl(i),z_cyl(j),tor_shift_tmp,r0,z0,tor_shift0)
+    call linear_2d_interpolate_kernel(r_cyl(i),z_cyl(j),tor_shift_tmp,r0,z0,tor_shift0)
 
-  !alpha0=phi0-tor_shift0
+    !alpha0=phi0-tor_shift0
 
-end subroutine interpolate_from_cylindrical_to_magnetic_coordinates
+  end subroutine interpolate_from_cylindrical_to_magnetic_coordinates
 
+  pure  subroutine interpolate_from_cylindrical_to_magnetic_coordinates1(r0,z0,theta0)
+    use constants,only:p_,two,twopi, pi
+    use mapping_module,only: r_cyl,z_cyl,dr,dz,radcor,theta_a,theta_b,i0,j0
+    use interpolate_module
 
-subroutine interpolate_from_cylindrical_to_magnetic_coordinates1(r0,z0,theta0)
-use constants,only:p_,two,twopi, pi
-use mapping_module,only: r_cyl,z_cyl,dr,dz,radcor,theta_a,theta_b,i0,j0
-  use interpolate_module
+    implicit none
+    real(p_),intent(in):: r0,z0
+    real(p_),intent(out):: theta0
+    real(p_):: radcor_tmp(2,2),theta_tmp(2,2),tor_shift_tmp(2,2),qval
+    integer::i,j,ii,jj
+    real(p_):: radcor_as_func_of_pfn,pfn_func
+    !locate
+    i=floor((r0-r_cyl(1))/dr)+1
+    j=floor((z0-z_cyl(1))/dz)+1
 
-implicit none
-real(p_),intent(in):: r0,z0
-real(p_),intent(out):: theta0
-real(p_):: radcor_tmp(2,2),theta_tmp(2,2),tor_shift_tmp(2,2),qval
-integer::i,j,ii,jj
-real(p_):: radcor_as_func_of_pfn,pfn_func
-!locate
-i=floor((r0-r_cyl(1))/dr)+1
-j=floor((z0-z_cyl(1))/dz)+1
-
-!  2D interpolations to get radcor0, theta0, and tor_shift0
+    !  2D interpolations to get radcor0, theta0, and tor_shift0
 !!$  do ii=1,2
 !!$     do jj=1,2
 !!$        radcor_tmp(ii,jj)=radcor(i+ii-1,j+jj-1)
 !!$     enddo
 !!$  enddo
 !!$
-!!$  call linear_2d_interpolation_kernel(r_cyl(i),z_cyl(j),radcor_tmp,r0,z0,radcor0)
+!!$  call linear_2d_interpolate_kernel(r_cyl(i),z_cyl(j),radcor_tmp,r0,z0,radcor0)
 
-!  radcor0=radcor_as_func_of_pfn(pfn_func(r0,z0))
+    !  radcor0=radcor_as_func_of_pfn(pfn_func(r0,z0))
 
-  do ii=1,2
-     do jj=1,2
-        theta_tmp(ii,jj)=theta_a(i+ii-1,j+jj-1)
-     enddo
-  enddo
+    do ii=1,2
+       do jj=1,2
+          theta_tmp(ii,jj)=theta_a(i+ii-1,j+jj-1)
+       enddo
+    enddo
 
- if(i<i0 .and. j.eq.j0) then !handle the boundary at the high-field-side (theta cut)
-     theta_tmp(1,1)=theta_b(i,j0)
-     theta_tmp(2,1)=theta_b(i+1,j0)
- endif
-  call linear_2d_interpolation_kernel(r_cyl(i),z_cyl(j),theta_tmp,r0,z0,theta0)
+    if(i<i0 .and. j.eq.j0) then !handle the boundary at the high-field-side (theta cut)
+       theta_tmp(1,1)=theta_b(i,j0)
+       theta_tmp(2,1)=theta_b(i+1,j0)
+    endif
+    call linear_2d_interpolate_kernel(r_cyl(i),z_cyl(j),theta_tmp,r0,z0,theta0)
 
-  
+
 !!$  do ii=1,2
 !!$     do jj=1,2
 !!$        tor_shift_tmp(ii,jj)=tor_shift_a(i+ii-1,j+jj-1)
@@ -528,6 +536,7 @@ j=floor((z0-z_cyl(1))/dz)+1
 !!$     tor_shift_tmp(2,1)=tor_shift_b(i+1,j0)
 !!$  endif
 !!$
-!!$  call linear_2d_interpolation_kernel(r_cyl(i),z_cyl(j),tor_shift_tmp,r0,z0,tor_shift0)
+!!$  call linear_2d_interpolate_kernel(r_cyl(i),z_cyl(j),tor_shift_tmp,r0,z0,tor_shift0)
 
-end subroutine interpolate_from_cylindrical_to_magnetic_coordinates1
+  end subroutine interpolate_from_cylindrical_to_magnetic_coordinates1
+end module map_to_mc

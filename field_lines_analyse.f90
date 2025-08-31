@@ -290,6 +290,7 @@ subroutine check_field_line_in_field_aligned_coordinates(r,z,phi,npt,qval)
   use constants,only: two,twopi
   use radial_module,only:z_axis
   use mapping_module,only: nx_mapping ,j0,r_cyl,tor_shift_b
+  use map_to_mc, only : interpolate_from_cylindrical_to_magnetic_coordinates
   use magnetic_field, only : psi_func, pfn_func, radcor_as_func_of_pfn
   implicit none
   integer,intent(in):: npt
@@ -330,7 +331,7 @@ subroutine check_field_line_in_field_aligned_coordinates(r,z,phi,npt,qval)
 !!$        do kk=1,nx_mapping
 !!$           tmp_array(kk)= tor_shift_b(kk,j0)
 !!$        enddo
-!!$        call linear_1d_interpolation(nx_mapping,r_cyl,tmp_array,r(j),total_shift)
+!!$        call linear_1d_interpolate(nx_mapping,r_cyl,tmp_array,r(j),total_shift)
 !!$        sum=sum+total_shift
 !!$     endif
 !!$     alpha(j)=phi(j)-(tor_shift(j)+sum)
@@ -402,7 +403,7 @@ end subroutine
     use constants,only:p_
     use constants,only: twopi
     use mapping_module,only: nx_mapping,tor_shift_b,j0,r_cyl
-  use interpolate_module,only: linear_1d_interpolation
+  use interpolate_module,only: linear_1d_interpolate
     implicit none
     real(p_),intent(in):: theta_old,theta_new,r,tor_shift
     real(p_),intent(out)::real_shift
@@ -414,7 +415,7 @@ end subroutine
        do kk=1,nx_mapping
           tmp_array(kk)= tor_shift_b(kk,j0)
        enddo
-       call linear_1d_interpolation(nx_mapping,r_cyl,tmp_array,r,twopi_q) !the result is twopi*q, I use this instead of directly using twopi*q because the latter may cause some cancellation problem
+       call linear_1d_interpolate(nx_mapping,r_cyl,tmp_array,r,twopi_q) !the result is twopi*q, I use this instead of directly using twopi*q because the latter may cause some cancellation problem
        sum=sum+twopi_q*sign(1._p_,theta_old-theta_new)
 !write(*,*) 'sum=',sum, 'twopi_q=',twopi_q,'tor_shift=',tor_shift,'sum+tor_shift/ real_shift',sum+tor_shift, 'kt=',kt
     endif
@@ -443,7 +444,7 @@ end subroutine
   
   psival=psi_func(r0,z0)
 
-  call contour(x_lcfs,z_lcfs,np_lcfs,r_axis,z_axis,psival,x_contour,z_contour)
+  call contour(psival,x_contour,z_contour)
 
   open(newunit=u,file=filename)
   do i=1,np_lcfs

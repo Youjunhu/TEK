@@ -4,7 +4,8 @@ module derivatives_in_xyz
 
 contains
 
-  subroutine radial_derivative(field,field_x) !calculate the derivative of field with respect to psi in field-line-following-coordinates (psi,theta,alpha)
+  subroutine radial_derivative(field,field_x)
+    !calculate the derivative of field with respect to psi in field-line-following-coordinates (psi,theta,alpha)
     use magnetic_coordinates,only: dradcor
     real(p_),intent(in)::field(:,:)
     real(p_),intent(out)::field_x(:,:)
@@ -24,7 +25,8 @@ contains
 
   end subroutine radial_derivative
 
-  subroutine toroidal_derivative(field,field_y) !calculate the derivative of pper_e with respect to y:
+  subroutine toroidal_derivative(field,field_y)
+    !partial derivative of field with respect to y
     use magnetic_coordinates,only: dtor
     real(p_),intent(in)::field(:,:)
     real(p_),intent(out)::field_y(:,:)
@@ -44,7 +46,8 @@ contains
 
   end subroutine toroidal_derivative
 
-  subroutine theta_derivative(a, a_theta) !partial derivative with respect to theta (with psi and alpha fixed), i.e., along the magnetic field line
+  subroutine theta_derivative(a, a_theta)
+    !partial derivative with respect to theta (with psi and alpha fixed), i.e., along the magnetic field line
     use constants,only : two
     use domain_decomposition,only : dtheta2,myid, my_right, my_left, Tube_COMM, gclr
     use magnetic_coordinates, only : mpol2

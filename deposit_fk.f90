@@ -1,18 +1,18 @@
 module deposit_fk_module
   implicit none
 contains
-  subroutine deposit_ions(nmarker_i,active_i,radcor_i,theta_i,alpha_i,phi_i,w_i) !given (r,v,w) of markers, do the deposition to get perpendicular currents and number density on spatial grids
+  subroutine deposit_fk(nmarker_i,active_i,radcor_i,theta_i,alpha_i,phi_i,w_i) !given (r,v,w) of markers, do the deposition to get perpendicular currents and number density on spatial grids
     !periodic toroidal boundary condition and the poloidal boundary condtion (connection condition along the field line) are taken into account
     !    use mpi
     use constants,only:p_
     use normalizing,only: nu
     use constants,only: one,two
-    use fk_module,only: ni0
-    use magnetic_coordinates,only:m=>mtor,n=>nflux2
-    use magnetic_coordinates,only:radcor_1d_array2,theta_1d_array,j_low2,tor_1d_array,dtor,dradcor,dtheta,jacobian
+    use fk_module,only: ni0, my_den_i_left, my_den_i_right !as output
+    use magnetic_coordinates,only:m=>mtor,n=>nrad
+    use magnetic_coordinates,only:xgrid,zgrid,ygrid,dtor,dradcor,dtheta,jacobian
     !use magnetic_coordinates,only:phi_grid_left,phi_grid_right
     use domain_decomposition,only: dtheta2,theta_start,ipol_eq, multi_eq_cells
-    use perturbation_field_matrix,only: my_den_i_left, my_den_i_right !as output
+
 
     integer,intent(in)::nmarker_i
     logical,intent(in):: active_i(nmarker_i)
@@ -36,14 +36,14 @@ contains
        coeff_theta_1=(theta_i(k)-theta_start)/dtheta2
        coeff_theta_2=one-coeff_theta_1
 
-       !call location(m,tor_1d_array,alpha_i(k),i)
-       i=floor((alpha_i(k)-tor_1d_array(1))/dtor+1) !uniform xarray is assumed, otherwise we need to call location() subroutine to locate xval
-       coeff_alpha_1=(alpha_i(k)-tor_1d_array(i))/dtor
+       !call location(m,ygrid,alpha_i(k),i)
+       i=floor((alpha_i(k)-ygrid(1))/dtor+1) !uniform xarray is assumed, otherwise we need to call location() subroutine to locate xval
+       coeff_alpha_1=(alpha_i(k)-ygrid(i))/dtor
        coeff_alpha_2=one-coeff_alpha_1
        !if(myid.eq.2) write(*,*) 'alpha, i=',i, 'k=',k
-       !call location(n, radcor_1d_array2, radcor_i(k),j)
-       j=floor((radcor_i(k)-radcor_1d_array2(1))/dradcor+1)
-       coeff_radcor_1= (radcor_i(k)-radcor_1d_array2(j))/dradcor
+       !call location(n, xgrid, radcor_i(k),j)
+       j=floor((radcor_i(k)-xgrid(1))/dradcor+1)
+       coeff_radcor_1= (radcor_i(k)-xgrid(j))/dradcor
        coeff_radcor_2=one-coeff_radcor_1
 
        i_plus_one=i+1
@@ -65,7 +65,7 @@ contains
     !$omp end parallel do
 
     do j=1,n  !divided by the space volume of a cell, to give the current denisty, note that this 'cell' is the cell defined by PIC (i.e., grid is the center of the cell). (while grids are the boundaries of the "mpi cell" for grouping and pushing particles)
-       jeq=j_low2+(j-1)
+       jeq=j
        dv1=abs(jacobian(ipol_eq,jeq))*dradcor*dtheta2*dtor !volume of the cell (the center of the cell is the grid)
        dv2=abs(jacobian(ipol_eq+multi_eq_cells,jeq))*dradcor*dtheta2*dtor !volume of the cell
        my_den_i_left(:,j)  = my_den_i_left (:,j)/dv1
@@ -74,5 +74,5 @@ contains
 
     my_den_i_left  = my_den_i_left /nu
     my_den_i_right = my_den_i_right/nu
-  end subroutine deposit_ions
+  end subroutine deposit_fk
 end module deposit_fk_module

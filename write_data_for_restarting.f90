@@ -2,9 +2,9 @@ module restart_mod
 contains
 subroutine write_data_for_restarting(kend)
   use fk_module
-  use gk_module,only: nm_gk,w_e, ptcl_num0_e,touch_bdry_e,radcor_e,theta_e,alpha_e,mu_e,vpar_e
+  use gk_module,only: nm_gk,w_gk, ptcl_num0_gk,touch_bdry_gc,xgc,zgc,ygc,mu_gk,vpar_gk
   use domain_decomposition,only:myid
-!  use perturbation_field_matrix,only: mf_par_left,mf_x_left,mf_y_left !field at the left-boundary (smaller theta) of the present cell 
+!  use perturbation_field,only: mf_par_left,mf_x_left,mf_y_left !field at the left-boundary (smaller theta) of the present cell 
   implicit none
   character(len=64)::cfile
   integer:: ufile !file nunit
@@ -12,11 +12,11 @@ subroutine write_data_for_restarting(kend)
 
   cfile = 'myidxxxxx.pd'
   write(cfile(5:9),'(i5.5)') myid
-  open(newunit=ufile,file=cfile,form='unformatted') !newunit is a keyword argument (as output) of open()
+  open(newunit=ufile,file=cfile,form='unformatted') 
   write(ufile) kend,  vt_i,vmin_i,vmax_i, normalizing_factor,&
        & nmarker_i,active_i, touch_bdry_i, w_i,ps_vol_i, r_i,z_i,phi_i, vr_i,vz_i,vphi_i,&
        & vr_i_mid, vz_i_mid, vphi_i_mid,&
-       & nm_gk,w_e,ptcl_num0_e, touch_bdry_e,radcor_e,theta_e,alpha_e,mu_e,vpar_e
+       & nm_gk,w_gk,ptcl_num0_gk, touch_bdry_gc,xgc,zgc,ygc,mu_gk,vpar_gk
   close(ufile)
 
 end subroutine write_data_for_restarting
@@ -24,7 +24,7 @@ end subroutine write_data_for_restarting
 
 subroutine read_data_for_restarting(kstart)
   use fk_module
-  use gk_module,only: nm_gk,w_e,ptcl_num0_e,touch_bdry_e,radcor_e,theta_e,alpha_e,mu_e,vpar_e
+  use gk_module,only: nm_gk,w_gk,ptcl_num0_gk,touch_bdry_gc,xgc,zgc,ygc,mu_gk,vpar_gk
   use domain_decomposition,only:myid
 
   use communication_connection
@@ -40,7 +40,7 @@ subroutine read_data_for_restarting(kstart)
   read(ufile) kend, vt_i,vmin_i,vmax_i,normalizing_factor,&
        & nmarker_i,active_i, touch_bdry_i, w_i,ps_vol_i, r_i,z_i,phi_i, vr_i,vz_i,vphi_i, &
        & vr_i_mid, vz_i_mid, vphi_i_mid,&
-       & nm_gk,w_e,ptcl_num0_e, touch_bdry_e,radcor_e,theta_e,alpha_e,mu_e,vpar_e
+       & nm_gk,w_gk,ptcl_num0_gk, touch_bdry_gc,xgc,zgc,ygc,mu_gk,vpar_gk
   close(ufile)
 
   if(kstart.ne.kend+1) then

@@ -1,3 +1,177 @@
+module interpolate_module
+  use constants,only:p_, one
+  implicit none
+  private
+  public linear_2d_interpolate_kernel, linear_2d_interpolate, linear_2d_interpolate0, linear_1d_interpolate, &
+       & linear_1d_interpolate_nonuniform, locate
+contains
+
+
+  
+  pure subroutine locate(m,x,dx,xval,i) !uniform grid is assumed
+    use constants,only:p_
+    implicit none
+    integer, intent(in) :: m
+    real(p_),intent(in) :: x(m),  dx,  xval
+    integer,intent(out) :: i
+
+    i = floor(one+(xval-x(1))/dx) 
+    if(i==0) i=1
+    if(i==m) i=m-1
+
+  end subroutine locate
+
+ pure subroutine linear_2d_interpolate(nx,nz,xarray,zarray,psi,x,z,psival)  !uniform xarray and zarray are assumed
+    implicit none
+    integer,intent(in):: nx,nz
+    real(p_),intent(in):: xarray(nx),zarray(nz),psi(nx,nz)
+    real(p_),intent(in):: x,z
+    real(p_),intent(out)::psival
+    real(p_):: dx,dz,t1,t2,slope
+    integer:: i,j ,ii,jj
+
+    dx=xarray(2)-xarray(1)
+    i=floor(one+(x-xarray(1))/dx) !uniform xarray is assumed, otherwise we need to call location() subroutine to locate xval
+
+    dz=zarray(2)-zarray(1)
+    j=floor(one+(z-zarray(1))/dz)
+
+    if(i.ge.nx) i=nx-1
+    if(j.ge.nz) j=nz-1
+    if(i.le.1) i=1 
+    if(j.le.1) j=1 
+    slope=(psi(i+1,j)-psi(i,j))/dx
+    t1=psi(i,j)+slope*(x-xarray(i))
+    slope=(psi(i+1,j+1)-psi(i,j+1))/dx
+    t2=psi(i,j+1)+slope*(x-xarray(i))
+    slope=(t2-t1)/dz
+    psival=t1+slope*(z-zarray(j))
+  end subroutine linear_2d_interpolate
+  
+ pure subroutine linear_2d_interpolate0(nx,nz,xarray,zarray,dx,dz,psi,x,z,i,j,psival)  !uniform xarray and zarray are assumed
+    use constants,only: p_, one
+    implicit none
+    integer,intent(in) :: nx,nz
+    real(p_),intent(in) :: xarray(nx), zarray(nz), dx, dz, psi(nx,nz), x, z
+    integer,intent(in) :: i,j
+    real(p_),intent(out) :: psival
+    real(p_) :: t1,t2,slope
+
+    slope = (psi(i+1,j)-psi(i,j))/dx
+    t1 = psi(i,j)+slope*(x-xarray(i))
+    slope = (psi(i+1,j+1)-psi(i,j+1))/dx
+    t2 = psi(i,j+1)+slope*(x-xarray(i))
+    slope = (t2-t1)/dz
+    psival = t1+slope*(z-zarray(j))
+  end subroutine linear_2d_interpolate0
+  
+  pure  subroutine linear_2d_interpolate_kernel(x1a,x2a,ya,x1,x2,y)
+    real(p_),intent(in) :: x1a(2), x2a(2), ya(2,2), x1, x2
+    real(p_),intent(out) :: y
+    real(p_) :: ytmp(2),slope
+    integer :: j
+
+    do j=1,2
+       slope=(ya(2,j)-ya(1,j))/(x1a(2)-x1a(1))
+       ytmp(j)=ya(1,j)+slope*(x1-x1a(1))
+    enddo
+    slope=(ytmp(2)-ytmp(1))/(x2a(2)-x2a(1))
+    y=ytmp(1)+slope*(x2-x2a(1))
+
+  end subroutine linear_2d_interpolate_kernel
+
+
+  pure subroutine linear_1d_interpolate(n, x, y, xval, yval)
+    use constants, only: p_, one
+    implicit none
+    integer, intent(in) :: n
+    real(p_), intent(in) :: x(n), y(n), xval
+    real(p_), intent(out) :: yval
+    real(p_) :: dx, slope
+    integer :: i
+
+    dx=x(2)-x(1)
+    i=floor(one+(xval-x(1))/dx) !uniform xarray is assumed, otherwise we need to call location() subroutine to locate xval
+
+    if(i<=1) then
+       yval = y(1)
+       return
+    endif
+
+    if(i>=n) then
+       yval = y(n)
+       return
+    endif
+    
+    !call location(n,x,xval,i)
+
+    slope=(y(i+1)-y(i))/(x(i+1)-x(i))
+    yval=y(i)+slope*(xval-x(i))
+  end subroutine linear_1d_interpolate
+
+
+ pure subroutine linear_1d_interpolate_nonuniform(n,x,y,xval,yval)  !non-uniform x array
+    use constants,only:p_, one
+    implicit none
+    integer,intent(in):: n
+    real(p_),intent(in):: x(n),y(n)
+    real(p_),intent(in):: xval
+    real(p_),intent(out):: yval
+    real(p_):: slope
+    integer:: i
+
+    !dx=x(2)-x(1)
+    !i=floor(one+(xval-x(1))/dx) !this for uniform x, otherwise we need to call location() subroutine to locate xval
+    if(xval.ge.x(n) ) then
+       i=n-1
+    elseif(xval.le.x(1)) then
+       i=1
+    else
+       call location(n,x,xval,i)
+    endif
+
+    slope=(y(i+1)-y(i))/(x(i+1)-x(i))
+    yval=y(i)+slope*(xval-x(i))
+
+  end subroutine linear_1d_interpolate_nonuniform
+
+
+pure  subroutine location(n,x,xval,k) !use bisection method to locate xval in an array
+    !return k (xval is located between x(k) and x(k+1)
+    use constants,only:p_
+    implicit none
+    integer,intent(in):: n
+    real(p_),intent(in):: x(n),xval
+    integer,intent(out)::k
+    integer:: kl,ku,km
+
+!!$    if(xval.gt.x(n) ) then
+!!$       write(*,*) "***warning****, x provided is not in the range"
+!!$       k=n-1
+!!$       return
+!!$    elseif(xval.lt.x(1)) then
+!!$       write(*,*) "***warning****, x provided is not in the range"
+!!$       k=1
+!!$       return
+!!$    endif
+    kl=1
+    ku=n
+30  if(ku-kl .gt. 1) then  !use bisection method to search location of theta
+       km=(ku+kl)/2
+       if((x(n).ge.x(1)).eqv.(xval.ge.x(km))) then
+          kl=km
+       else
+          ku=km
+       endif
+       goto 30
+    endif
+    k=kl
+  end subroutine location
+
+
+
+end module interpolate_module
+
 module math
 contains
 
@@ -110,15 +284,15 @@ end subroutine sub_random_yj
     !dl=ds*(1._p_+0.) !use linear function to approximate the arc length
   end subroutine arc_between_two_points
 
-  subroutine ZGETRS_wrapper(kn,matrix, ipiv, rhs_dft, solution_dft) !solve the field equation for a single toroidal harmonic
-    use constants,only:p_
+  subroutine ZGETRS_wrapper(kn, matrix, ipiv, rhs_dft, solution_dft) !solve the field equation for a single toroidal harmonic
+    use constants, only: p_
     implicit none
-    integer,intent(in):: kn !index of the toroidal harmonic
+    integer, intent(in) :: kn !index of the toroidal harmonic
     complex(p_), intent(in) :: matrix(:,:,0:) !LU factorization of the radial coefficient matrix
     integer, intent(in) :: ipiv(:,0:) 
-    complex(p_),intent(in):: rhs_dft(:)
-    complex(p_),intent(out):: solution_dft(:)
-    complex(p_):: s(size(rhs_dft),1)
+    complex(p_), intent(in):: rhs_dft(:)
+    complex(p_), intent(out):: solution_dft(:)
+    complex(p_) :: s(size(rhs_dft),1)
     integer:: info, n
 
     n = size(rhs_dft)
@@ -192,38 +366,19 @@ end subroutine sub_random_yj
   end subroutine cross_product_in_cartesian
 
 
-  subroutine shift_to_zero_twopi_range(a) !shift a into the range [0:twopi]
+    elemental subroutine shift_toroidal(a, range) !shift "a" into the range [0:range]
     use constants,only:p_
-    use constants,only: twopi
     implicit none
-    real(p_),intent(inout):: a
-    integer:: ishift
-!!$  a=a-int(a/twopi)*twopi !shift into the range [0:twopi]
-!!$  if(a.lt.0) a=a+twopi !shift into the range [0:twopi]
+    real(p_), intent(in) :: range !is positive
+    real(p_), intent(inout) :: a
 
-    ishift=floor(a/twopi)
-    a=a-ishift*twopi
+!!$ a=a-floor(a/range)*range
 
-  end subroutine shift_to_zero_twopi_range
+    ! a = mod(a,range)
+    ! if(a<0) a = a + range
 
-
-  elemental subroutine shift_to_specified_toroidal_range(a) !shift "a" into the range [0:toroidal_range]
-    use constants,only:p_
-    !  use constants,only: twopi
-    use magnetic_coordinates,only: toroidal_range !is positive
-    implicit none
-    real(p_),intent(inout):: a
-    integer:: ishift
-
-!!$  a=a-int(a/toroidal_range)*toroidal_range !shift into the range [0:toroidal_range]
-!!$  if(a.lt.0) a=a+toroidal_range !shift into the range [0:toroidal_range]
-!!$
-!!$ ishift=floor(a/toroidal_range)
-!!$ a=a-ishift*toroidal_range
-
-    a = mod(a,toroidal_range)
-    if(a<0) a = a + toroidal_range
-  end subroutine shift_to_specified_toroidal_range
+    a = modulo(a, range)
+  end subroutine shift_toroidal
 
 
   subroutine shift_to_minus_pi_positive_pi_range(a) !shift "a" into the range [-pi:pi]
@@ -447,36 +602,29 @@ end subroutine sub_random_yj
   end subroutine partial_derivatives_2d
 
 
-  subroutine arrange_lcfs(x_lcfs,z_lcfs,np_lcfs,x_axis,z_axis,myid)
-    !replacing one point near the high-field side of the midplane by a point that is exactly on the high-field side of the midplane
-    !then arrange the arrays x_lcfs_new and z_lcfs_new so that the starting point (x_lcfs_new(1),z_lcfs_new(1)) is on the high-field-side of the midplane
-    !midplane is defined as the z=z_axis plane
+  subroutine arrange_lcfs(x_lcfs, z_lcfs, np, x_axis, z_axis)
+    !arrange the arrays x_lcfs_new and z_lcfs_new so that the starting point (x_lcfs_new(1),z_lcfs_new(1)) is on the high-field-side of the midplane
     use constants,only:p_
+    use domain_decomposition, only : myid
     implicit none
-    integer,intent(in):: np_lcfs,myid
-    real(p_),intent(inout):: x_lcfs(np_lcfs),z_lcfs(np_lcfs)
-    real(p_),intent(in):: x_axis,z_axis
-    real(p_):: x_lcfs_new(np_lcfs),z_lcfs_new(np_lcfs) 
-    real(p_):: Rout
-    real(p_):: r_major,r_minor,eps,direction
-    integer:: kk(1),k,i
+    integer, intent(inout) :: np
+    real(p_), intent(inout) :: x_lcfs(np), z_lcfs(np)
+    real(p_), intent(in) :: x_axis, z_axis
+    real(p_) :: x_lcfs_new(np), z_lcfs_new(np), dz(np)
+    real(p_) :: Rout
+    real(p_) :: r_major, r_minor, eps, direction
+    integer :: kk(1), k, i
 
-    !write(*,*) ' Z values of the uppermost point of LCFS: ', maxval(z_lcfs)
-    !write(*,*) ' Z values of the lowest point of LCFS: ' ,minval(z_lcfs)
+    !kk=minloc(x_lcfs) ! to determine the high-field side of the midplane
+    !k=kk(1)
+    dz = abs((z_lcfs - z_axis))
+    do i=1,np
+       if(x_lcfs(i) > x_axis) dz(i) = 10d20 !filtering
+    enddo
+    kk = minloc(dz)
+    k = kk(1)
 
-    !set the starting point of LCFS to be at the low-field-side of the midplane
-    !maxval(x_lcfs)
-    !kk=maxloc(x_lcfs) !return the index of the array for which R is the largest,in order to determine the low-field side of the midplane
-    kk=minloc(x_lcfs) !return the index of the array for which R is the smallest,in order to determine the high-field side of the midplane
-    k=kk(1)
-    !k=10
-    !write(*,*) 'index of the point on the lcfs that have the largest R, k=',k
-    !if((z_lcfs(k+1)-z_axis)*(z_lcfs(k-1)-z_axis)>0) stop 'error in selecting the point on LCFS'
-
-    call major_radius_on_midplane(np_lcfs,x_lcfs,z_lcfs,x_axis,z_axis,Rout)
-
-    !  r_major=(maxval(x_lcfs)+minval(x_lcfs))/2._p_ !by definition
-    !  r_minor=(maxval(x_lcfs)-minval(x_lcfs))/2._p_ !by definition
+    !call major_radius_on_midplane(np,x_lcfs,z_lcfs,x_axis,z_axis,Rout)
 
     ! write(*,*) 'inverse aspect ratio of LCFS is (definied at low-field side) ', (Rout-x_axis)/x_axis
     !  write(*,*) 'r_axis=',x_axis, 'r_major=', r_major, 'r_minor=',r_minor
@@ -485,18 +633,19 @@ end subroutine sub_random_yj
     ! write(*,*) 'ellipticity (elongation) of LCFS is ', (maxval(z_lcfs)-minval(z_lcfs))/2._p_/r_minor
     !write(*,*) 'upper triangularity of LCFS is ', (r_major-x_lcfs(maxloc(z_lcfs)))/r_minor, &
     !          & 'lower triangularity of LCFS is ', (r_major-x_lcfs(minloc(z_lcfs)))/r_minor
-    !replace one point of LCFS with the new point
-    x_lcfs(k)=Rout
-    z_lcfs(k)=z_axis
 
-    !arrange the arrays so that x_lcfs_new and z_lcfs_new start from the low/high-field-side of the midplane
-    do i=1,np_lcfs
-       if(k+i-1.le.np_lcfs) then
+    !replace one point of LCFS with the new point
+    !x_lcfs(k)=Rout
+    !z_lcfs(k)=z_axis
+
+    !arrange the arrays so that (x_lcfs_new(1), z_lcfs_new(1)) corresponds to (x_lcfs(k), z_lcfs(k))
+    do i=1,np
+       if(k+i-1.le.np) then
           x_lcfs_new(i)=x_lcfs(k+i-1)
           z_lcfs_new(i)=z_lcfs(k+i-1)
        else
-          x_lcfs_new(i)=x_lcfs(k+i-np_lcfs)
-          z_lcfs_new(i)=z_lcfs(k+i-np_lcfs)
+          x_lcfs_new(i)=x_lcfs(k+i-np)
+          z_lcfs_new(i)=z_lcfs(k+i-np)
        endif
     enddo
 
@@ -504,17 +653,19 @@ end subroutine sub_random_yj
     x_lcfs=x_lcfs_new
     z_lcfs=z_lcfs_new
 
-    !check wheter the direction of the sequecne (r(i),z(i)) with i increasing is clockwise or anticlockwise when viewed along grad_phi direction, if clockwise, switch it to anticlockwise
+    !check wheter the direction of the sequecne (r(i),z(i)) with i increasing is clockwise or anticlockwise
+    !when viewed along grad_phi direction, if clockwise, switch it to anticlockwise
     !This is achieved by using the determination of the direction matrix (a well known method in graphic theory).
-    !Because the contours of Psi considered here are always convex polygons (instead of concave polygons), we can select any vertex on the curve to calculate the direction matrix. (refer to wikipedia about the direction matrix)
+    !Because the contours of Psi considered here are always convex (rather than concave) polygons,
+    !we can select any vertex on the curve to calculate the direction matrix. (refer to wikipedia about the direction matrix)
     direction=(x_lcfs(2)-x_lcfs(1))*(z_lcfs(3)-z_lcfs(1))-(x_lcfs(3)-x_lcfs(1))*(z_lcfs(2)-z_lcfs(1))
     if(direction .lt. 0.) then
        if(myid.eq.0) write(*,*) 'the direction of sequency (x_lcfs(i,j),z_lcfs(i,j)) &
             & with i increasing is clockwise, switch it to anticlockwise'
 
-       do i=1,np_lcfs !switch it to anticlockwise
-          x_lcfs(i)=x_lcfs_new(np_lcfs+1-i)
-          z_lcfs(i)=z_lcfs_new(np_lcfs+1-i)
+       do i=1,np !switch it to anticlockwise
+          x_lcfs(i)=x_lcfs_new(np+1-i)
+          z_lcfs(i)=z_lcfs_new(np+1-i)
        enddo
     else if (direction .gt. 0.) then
        if(myid.eq.0) write(*,*) 'the direction of sequency (x_lcfs(i,j),z_lcfs(i,j)) with i increasing is anticlockwise'
@@ -525,8 +676,8 @@ end subroutine sub_random_yj
 
     if (myid.eq.0) then
        open(123,file='lcfs2.txt')
-       do i=1,np_lcfs
-          write(123,*) x_lcfs(i),z_lcfs(i)
+       do i=1,np
+          write(123,*) x_lcfs(i), z_lcfs(i)
        enddo
        close(123)
     endif
@@ -538,7 +689,7 @@ end subroutine sub_random_yj
   subroutine major_radius_on_midplane(mpol,rs,zs,r_axis,z_axis,Rout)
     !given a flux surface, this subroutine determines the major radius of the point on the low/high-field side of the middle plane
     use constants,only:p_
-    use interpolate_module,only: linear_1d_interpolation_general_case
+    use interpolate_module,only: linear_1d_interpolate_nonuniform
 
     implicit none
     integer,intent(in):: mpol
@@ -551,7 +702,7 @@ end subroutine sub_random_yj
 
     n=1
     do i=1,mpol-1 
-       !     if(rs(i).gt.r_axis) then !select the low-field side (i.e., the part with r larger than r_axis) of a flux surface
+       !if(rs(i).gt.r_axis) then !select the low-field side (i.e., the part with r larger than r_axis) of a flux surface
        if(rs(i).lt.r_axis) then !select the high-field side (i.e., the part with r less than r_axis) of a flux surface
           r_select(n)=rs(i)
           z_select(n)=zs(i)
@@ -575,9 +726,13 @@ end subroutine sub_random_yj
        enddo
     end do
 
-    call linear_1d_interpolation_general_case(n-1,z_select,r_select,z_axis,Rout)  
+    call linear_1d_interpolate_nonuniform(n-1,z_select,r_select,z_axis,Rout)  
 
   end subroutine major_radius_on_midplane
 
 end module math
+
+
+
+
 

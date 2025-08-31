@@ -4,12 +4,14 @@ subroutine compute_particle_magnetic_coordinates(nmarker_i,r_i,phi_i,z_i,radcor_
   use constants,only:p_
   use constants,only:pi,twopi
   use poloidal_flux_2d,only:xarray,zarray,nx,nz
-  use magnetic_coordinates,only:radcor_low2,radcor_upp2,radcor_low0,radcor_upp0
-  use magnetic_coordinates,only:mpol,nflux,theta_1d_array,radcor_1d_array,tor_shift_mc
+  use magnetic_coordinates,only:xlow,xupp
+  use magnetic_coordinates,only:mpol,nrad,zgrid, xgrid, tor_shift_mc, toroidal_range
   use magnetic_field,only:radcor_as_func_of_pfn
   use magnetic_field, only : pfn_func
+    use map_to_mc, only : interpolate_from_cylindrical_to_magnetic_coordinates1
+
   use interpolate_module
-    use math,only: shift_to_specified_toroidal_range
+    use math,only: shift_toroidal
   implicit none
   integer,intent(in):: nmarker_i
   real(p_),intent(inout):: r_i(nmarker_i),phi_i(nmarker_i),z_i(nmarker_i)
@@ -27,10 +29,10 @@ subroutine compute_particle_magnetic_coordinates(nmarker_i,r_i,phi_i,z_i,radcor_
         active_i(k)=.false.
      else
         radcor_i(k)=radcor_as_func_of_pfn(pfn_func(r_i(k),z_i(k))) !calculate the radial coordinate
-        if(radcor_i(k).ge.radcor_upp0 .or. radcor_i(k).le.radcor_low0) then 
+        if(radcor_i(k).ge.xgrid(nrad) .or. radcor_i(k).le.xgrid(1)) then 
            touch_bdry_i(k)=.true. !marker is lost forever, will never be re-introduced
            active_i(k)=.false.
-        else if(radcor_i(k).lt.radcor_low2 .or. radcor_i(k).gt.radcor_upp2) then
+        else if(radcor_i(k).lt.xlow .or. radcor_i(k).gt.xupp) then
            z_i(k)=-z_i(k) !relocate the marker by up-down reversing
            radcor_i(k)=radcor_as_func_of_pfn(pfn_func(r_i(k),z_i(k))) !re-calculate the radial coordinate, which is different from the original value if the flux-surface is not up-down symmetric
            active_i(k)=.false.
@@ -47,11 +49,11 @@ subroutine compute_particle_magnetic_coordinates(nmarker_i,r_i,phi_i,z_i,radcor_
      !if(active_i(k).eqv..false.) cycle !wrong, inactive markers' theta must be computed so that they can be sorted by the sorting subroutine
      if(touch_bdry_i(k).eqv..true.) cycle
      call interpolate_from_cylindrical_to_magnetic_coordinates1(r_i(k),z_i(k),theta_i(k))
-     call linear_2d_interpolation(mpol,nflux,theta_1d_array,radcor_1d_array,tor_shift_mc,&
+     call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,tor_shift_mc,&
           & theta_i(k),radcor_i(k),tor_shift) !interpolating in magnetic coordinates to get tor_shift
      alpha_i(k)=phi_i(k)-tor_shift !generalized toroidal angle
-     call shift_to_specified_toroidal_range(alpha_i(k))
-     call shift_to_specified_toroidal_range(phi_i(k)) !phi_i is needed in deposition, so should be shifted to the desired range
+     call shift_toroidal(alpha_i(k),toroidal_range)
+     call shift_toroidal(phi_i(k),toroidal_range) !phi_i is needed in deposition, so should be shifted to the desired range
   enddo
 
 end subroutine compute_particle_magnetic_coordinates
