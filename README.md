@@ -14,6 +14,6 @@ Run TEK:
 mpirun -n 256  ./TEK
 
 
-TEK has all the capabilities one expects a modern gyrokinetic code to have: kinetic electrons and electromagnetic perturbations, being capable of simulating kinetic ballooning modes and trapped electron modes.
+TEK has all the capabilities one expects a modern gyrokinetic code to have: kinetic electrons and electromagnetic perturbations, being capable of simulating kinetic ballooning modes and trapped electron modes. TEK has been benchmarked with GENE code in the DIII-D cyclone base case for boththe ITG-KBM transition and ITG-TEM transition.
 
 Let me know if you have interest in using TEK.
