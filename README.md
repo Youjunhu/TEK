@@ -7,7 +7,7 @@ Comile and run TEK:
 
 In linux terminal, compile TEK:
 
-$ make
+$ make compile_one_file
 
 Run TEK:
 
