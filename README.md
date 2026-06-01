@@ -1,4 +1,4 @@
-TEK performs particle in cell simulation of low-frequency electromagnetic turbulence in tokamak plasmas using gyrokinetic model for ions, and drift-kinetic for electrons.
+TEK performs PIC simulation of low-frequency electromagnetic turbulence in tokamak plasmas using gyrokinetic model for ions, and drift-kinetic for electrons.
 Documents about TEK: https://youjunhu.github.io/research_notes/nonlinear_gyrokinetic_equation.pdf
 
 Libraries requried by TEK: Lapack and FFTW
@@ -18,4 +18,4 @@ TEK has all the capabilities one expects a modern gyrokinetic code to have: kine
 
 TEK has been benchmarked with GENE code in the DIII-D cyclone base case for the ITG-KBM transition and ITG-TEM transition.
 
-Let me know if you have interest in using TEK.
+Let me know if you're interested in using TEK.
