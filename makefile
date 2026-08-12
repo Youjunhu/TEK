@@ -1,9 +1,9 @@
 # YouJunHu's makefile
 #include ${PETSC_DIR}/lib/petsc/conf/variables
 program_name=TEK
+main_src=main.f90
 #main_src=test.f90
 #main_src=main_adiabatic_electrons.f90
-main_src=main.f90
 #main_src=test_ion_trajectory.f90
 #main_src=test_electron_trajectory.f90
 #main_src=test_electron_trajectory2.f90
@@ -15,8 +15,7 @@ main_src=main.f90
 #field_solver_src= field_solver_sp_fd.f90
 #field_solver_src= petsc_field_solver.F90
 #field_solver_src=field_solver_flux_tube.f90
-#source_term_src=prepare_source_terms_for_simple_iteration_scheme.f90
-#source_term_src=prepare_source_terms_matrix_inversion.f90
+
 
 ifeq  (${which_machine},edison)
   COMPILER=	ftn
@@ -65,7 +64,7 @@ else ifeq (${which_machine}, thex)
    COMPILER=	mpif90
    #OPTION= -O3 -fmax-errors=1  -fimplicit-none  -Wsurprising -fbounds-check -fbacktrace  -Wno-unused-variable -Wmaybe-uninitialized -fno-realloc-lhs  -Wconversion -Wno-argument-mismatch -lfftw3
 #  -fast opton does not work on thex.
-OPTION= -O3 -lfftw3 -xHost -qopt-zmm-usage=high 
+OPTION= -O3 -lfftw3 -xHost -qopt-zmm-usage=high -init=infinity
 fftw_include=-I/fs2/software/fftw/3.3.10-icc19.0/include/
 #fftw_include=-I/fs2/home/huyj/install/fftw-3.3.10/api
 #lapack_location:= /fs2/home/huyj/install/lapack-3.12.1/liblapack.a
@@ -83,9 +82,10 @@ fftw_include=-I/usr/include
 
     fftw_lib:=/usr/lib/x86_64-linux-gnu/libfftw3.so.3
 #OPTION=    -g  -fmax-errors=1 -O0 -fimplicit-none  -Wsurprising -fbounds-check -fbacktrace  -Wno-unused-variable -Wmaybe-uninitialized -fno-realloc-lhs  -pedantic -Wconversion
-OPTION=      -fmax-errors=1 -O3 -fimplicit-none  -Wsurprising -fbounds-check -fbacktrace  -Wno-unused-variable -Wmaybe-uninitialized -fno-realloc-lhs  -pedantic -Wconversion
+#OPTION=      -fmax-errors=1 -O3 -fimplicit-none  -Wsurprising -fbounds-check -fbacktrace  -Wno-unused-variable -Wmaybe-uninitialized -fno-realloc-lhs  -pedantic -Wconversion
 #COMPILER=  ${FLINKER}
   #OPTION= -g -fbounds-check -fopenmp -fimplicit-none  -Wsurprising -Wall  -Wno-unused-variable
+OPTION= -g -fbounds-check  -fimplicit-none  -Wsurprising -Wextra -Wconversion -pedantic -Wmaybe-uninitialized
   #OPTION= -g -Wall -Wextra -Wconversion -pedantic  -ffpe-trap=zero,overflow,underflow -fbounds-check 
   #OPTION=-Wall -Wextra -Wimplicit-interface  -fmax-errors=1 -g -fcheck=all -fbacktrace -ffree-line-length-none 
   #OPTION=   -Og  -fmax-errors=1 -g -fimplicit-none -fbounds-check -fbacktrace -Wall -Wextra  -pedantic -Wno-unused -Wno-unused-dummy-argument -Warray-temporaries
@@ -113,22 +113,18 @@ f90source = modules.f90 pputil_yj.f90  splines.f90  math.f90  \
                  transform.f90 fk_module.f90 \
                profiles.f90 gk_module.f90     \
                  load_gk.f90 \
-                 field_lines_analyse.f90  \
                  deposit_gk.f90  deposit_fk.f90 \
               communication_connection.f90 filter.f90 derivatives_in_xyz.f90   \
-             gk_polarization.f90 gyro_ring.f90 gyro_average.f90 poisson.f90 ampere.f90 \
+              gyro_ring.f90 gyro_average.f90 gk_polarization.f90 poisson.f90 ampere.f90 \
             force.f90          boris.f90   push_fk_orbit.f90  \
               drift.f90 push_gk_orbit.f90 \
-            push_gk_weight.f90   push_fk_weight.f90    $(source_term_src)     \
-            diagnosis.f90  restart.f90      $(field_solver_src) $(main_src)
+            push_gk_weight.f90   push_fk_weight.f90      \
+            diagnosis.f90  restart.f90     $(main_src)
 
 
-#f90objs_tmp= $(f90source:.f90=.o)
 #f90objs= $(f90objs_tmp:.F90=.o)
 f90objs= $(f90source:.f90=.o)
-#f77source=  pnpoly.for
-#f77objs= $(f77source:.for=.o)
-build_directory=build/
+
 
 $(program_name):    $(f90objs)  $(f77objs)   makefile
 	 $(COMPILER)  $(OPTION)   $(f90objs) $(f77objs) $(lapack_location) $(blas_location) $(fftw_lib)  -o $(program_name)  ${lib2} 
@@ -146,9 +142,9 @@ create_tags:
 tarfile:
 	mkdir $(program_name)_version`date +"%Y-%m-%d"` && cp -r $(f90source) $(f77source) makefile input.nmlt $(program_name)_version`date +"%Y-%m-%d"` && tar -cf $(program_name)_version`date +"%Y-%m-%d"`.tar $(program_name)_version`date +"%Y-%m-%d"` && rm -r $(program_name)_version`date +"%Y-%m-%d"` 
 merge_to_one_file:
-	cat $(f90source) > $(program_name)_one_file.f90
+	cat $(f90source) > $(program_name)_v`date +"%Y-%m-%d"`.f90
 compile_one_file:
-	$(COMPILER)  $(OPTION) $(program_name)_one_file.f90   $(lapack_location) $(blas_location) $(fftw_include) $(fftw_lib) -lfftw3 -lm -o  $(program_name)
+	$(COMPILER)  $(OPTION) $(program_name)_v`date +"%Y-%m-%d"`.f90  $(lapack_location) $(blas_location) $(fftw_include) $(fftw_lib) -lfftw3 -lm -o  $(program_name)
 #sync_to_cluster:
 #	 make clean && rsync -avz --delete ./ yj@202.127.204.22:/scratch/yj/TEK
 to_cori:
@@ -168,7 +164,7 @@ on_sm:
 	export which_machine=sm; make
 
 to_thex:
-	make clean && rsync -avz --delete --exclude=".git" ./ thex:~/tek/
+	make clean && rm -f *.txt && rsync -avz --delete --exclude=".git" ./ thex:~/tek/
 to_sm:
 	make clean && rsync -avz --delete --exclude=".git" ./ sm:~/tek/
 

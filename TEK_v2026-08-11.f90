@@ -89,24 +89,6 @@ module boundary
 end module boundary
 
 
-module mapping_module !from cylindrical coordinates to magnetic coordinates
-  use constants, only: p_
-  implicit none
-  save
-  integer, parameter :: nx_mapping=100, nz_mapping=100
-  real(p_):: r_cyl(nx_mapping), z_cyl(nz_mapping)
-  real(p_):: radcor(nx_mapping,nz_mapping)
-  real(p_):: theta_a(nx_mapping,nz_mapping), theta_b(nx_mapping,nz_mapping)
-  real(p_):: tor_shift_a(nx_mapping,nz_mapping), tor_shift_b(nx_mapping,nz_mapping)
-  real(p_):: dr,dz
-  integer:: i0, j0 !index of the point at magnetic axis
-  real(p_):: dtheta_dr(nx_mapping,nz_mapping), dtheta_dz(nx_mapping,nz_mapping)
-  real(p_):: ddelta_dr_a(nx_mapping,nz_mapping), ddelta_dz_a(nx_mapping,nz_mapping)
-  real(p_):: ddelta_dr_b(nx_mapping,nz_mapping), ddelta_dz_b(nx_mapping,nz_mapping)
-  real(p_):: dradial_dr(nx_mapping,nz_mapping), dradial_dz(nx_mapping,nz_mapping)
-end module mapping_module
-
-
 module domain_decomposition
   use constants, only: p_
   implicit none
@@ -121,7 +103,7 @@ module domain_decomposition
 end module domain_decomposition
 
 module control_parameters
-  use constants,only:p_, elementary_charge,kev
+  use constants, only: p_
   implicit none
   save
   integer  :: kstart,kend
@@ -145,7 +127,9 @@ module perturbation_field
   implicit none
   save
   real(p_), dimension(:,:,:), allocatable :: potential, phix, phiy, phiz !electrostatic potential and its derivatives
+  complex(p_), allocatable :: phi_dft(:,:)
   real(p_), dimension(:,:,:), allocatable :: apara, ax, ay, az !parallel component of the vector potnetial and its derivative
+  complex(p_), allocatable :: apara_dft(:,:)
   real(p_), dimension(:,:,:), allocatable :: apara_h, apara_s, apara_s_old !used in the mixed-variable pullback method
   real(p_), dimension(:,:,:), allocatable :: ahx, ahy, ahz
 
@@ -162,6 +146,7 @@ contains
     allocate(phix(m, n, 2)) !dphi/dx
     allocate(phiy(m, n, 2)) !dphi/dy
     allocate(phiz(m, n, 2)) !dphi/dz
+    allocate(phi_dft(0:m-1, n-2)) 
 
     allocate(apara  (m,n,2))
     allocate(apara_h(m,n,2))
@@ -173,7 +158,9 @@ contains
     allocate(ahx(m,n,2)) !dApar_h/dx
     allocate(ahy(m,n,2)) !dApar_h/dy
     allocate(ahz(m,n,2)) !dApar_h/dz
+    allocate(apara_dft(0:m-1, n-2))
 
+    
     allocate(ef_cyl_r_left(m+1,n))
     allocate(ef_cyl_z_left(m+1,n))
     allocate(ef_cyl_phi_left(m+1,n))
@@ -1747,120 +1734,6 @@ end function
 
 end module splines
 
-
-
-!subroutines from numerical reciple
-
-      SUBROUTINE spline(x,y,n,yp1,ypn,y2)
-      use constants,only:p_
-      implicit none
-      INTEGER n,NMAX
-      REAL(p_) yp1,ypn,x(n),y(n),y2(n)
-      PARAMETER (NMAX=800)
-      INTEGER i,k
-      REAL(p_) p,qn,sig,un,u(NMAX)
-      if (yp1.gt..99e30) then
-        y2(1)=0.
-        u(1)=0.
-      else
-        y2(1)=-0.5
-        u(1)=(3./(x(2)-x(1)))*((y(2)-y(1))/(x(2)-x(1))-yp1)
-      endif
-      do 11 i=2,n-1
-        sig=(x(i)-x(i-1))/(x(i+1)-x(i-1))
-        p=sig*y2(i-1)+2.
-        y2(i)=(sig-1.)/p
-        u(i)=(6.*((y(i+1)-y(i))/(x(i+&
-     &1)-x(i))-(y(i)-y(i-1))/(x(i)-x(i-1)))/(x(i+1)-x(i-1))-sig* &
-     &u(i-1))/p
-11    continue
-      if (ypn.gt..99e30) then
-        qn=0.
-        un=0.
-      else
-        qn=0.5
-        un=(3./(x(n)-x(n-1)))*(ypn-(y(n)-y(n-1))/(x(n)-x(n-1)))
-      endif
-      y2(n)=(un-qn*u(n-1))/(qn*y2(n-1)+1.)
-      do 12 k=n-1,1,-1
-        y2(k)=y2(k)*y2(k+1)+u(k)
-12    continue
-      return
-      END
-
-      SUBROUTINE splint(xa,ya,y2a,n,x,y)
-      use constants,only:p_
-      implicit none
-      INTEGER n
-      REAL(p_) x,y,xa(n),y2a(n),ya(n)
-      INTEGER k,khi,klo
-      REAL(p_) a,b,h
-      klo=1
-      khi=n
-1     if (khi-klo.gt.1) then
-        k=(khi+klo)/2
-        if(xa(k).gt.x)then
-          khi=k
-        else
-          klo=k
-        endif
-      goto 1
-      endif
-      h=xa(khi)-xa(klo)
-      if (h.eq.0.) stop 'bad xa input in splint'
-      a=(xa(khi)-x)/h
-      b=(x-xa(klo))/h
-      y=a*ya(klo)+b*ya(khi)+((a**3-a)*y2a(klo)+(b**3-b)*y2a(khi))*(h** &
-     &2)/6.
-      return
-      END
-!C  (C) Copr. 1986-92 Numerical Recipes Software ,4-#.
-
-
-            SUBROUTINE splie2(x1a,x2a,ya,m,n,y2a)
-      use constants,only:p_
-      implicit none
-      INTEGER m,n,NN
-      REAL(p_) x1a(m),x2a(n),y2a(m,n),ya(m,n)
-      PARAMETER (NN=200)
-!CU    USES spline
-      INTEGER j,k
-      REAL(p_) y2tmp(NN),ytmp(NN)
-      do 13 j=1,m
-        do 11 k=1,n
-          ytmp(k)=ya(j,k)
-11      continue
-        call spline(x2a,ytmp,n,1.d30,1.d30,y2tmp)
-        do 12 k=1,n
-          y2a(j,k)=y2tmp(k)
-12      continue
-13    continue
-      return
-      END
-!C  (C) Copr. 1986-92 Numerical Recipes Software ,4-#.
-
-
-      SUBROUTINE splin2(x1a,x2a,ya,y2a,m,n,x1,x2,y)
-      use constants,only:p_
-      implicit none
-      INTEGER m,n,NN
-      REAL(p_) x1,x2,y,x1a(m),x2a(n),y2a(m,n),ya(m,n)
-      PARAMETER (NN=200)
-!CU    USES spline,splint
-      INTEGER j,k
-      REAL(p_) y2tmp(NN),ytmp(NN),yytmp(NN)
-      do 12 j=1,m
-        do 11 k=1,n
-          ytmp(k)=ya(j,k)
-          y2tmp(k)=y2a(j,k)
-11      continue
-        call splint(x2a,ytmp,y2tmp,n,x2,yytmp(j))
-12    continue
-      call spline(x1a,yytmp,m,1.d30,1.d30,y2tmp)
-      call splint(x1a,yytmp,y2tmp,m,x1,y)
-      return
-      END
-!C  (C) Copr. 1986-92 Numerical Recipes Software ,4-#.
 module interpolate_module
   use constants,only:p_, one
   implicit none
@@ -1953,52 +1826,42 @@ contains
     real(p_) :: dx, slope
     integer :: i
 
-    dx = x(2)-x(1)
-    i = floor(one+(xval-x(1))/dx) !uniform xarray is assumed
+    dx = x(2) - x(1)
+    i = floor(one + (xval-x(1))/dx) !uniform xarray is assumed
 
-    if(i<=1) then
-       yval = y(1)
-       return
-    endif
-
-    if(i>=n) then
+    if(i==n) then
        yval = y(n)
        return
     endif
-
+    
     slope = (y(i+1)-y(i))/(x(i+1)-x(i))
-    yval = y(i)+slope*(xval-x(i))
+    yval = y(i) + slope*(xval-x(i))
   end subroutine linear_1d_interpolate
 
-
-
- pure subroutine linear_1d_interpolate_nonuniform(n,x,y,xval,yval)  !non-uniform x array
-    use constants,only:p_, one
+ pure subroutine linear_1d_interpolate_nonuniform(n, x, y, xval, yval)  !non-uniform x array
+    use constants, only: p_, one
     implicit none
-    integer,intent(in):: n
-    real(p_),intent(in):: x(n),y(n)
-    real(p_),intent(in):: xval
-    real(p_),intent(out):: yval
-    real(p_):: slope
-    integer:: i
+    integer, intent(in) :: n
+    real(p_), intent(in) :: x(n),y(n)
+    real(p_), intent(in) :: xval
+    real(p_), intent(out) :: yval
+    real(p_) :: slope
+    integer :: i
 
-    !dx=x(2)-x(1)
-    !i=floor(one+(xval-x(1))/dx) !this for uniform x, otherwise we need to call location() subroutine to locate xval
     if(xval.ge.x(n) ) then
        i=n-1
     elseif(xval.le.x(1)) then
        i=1
     else
-       call location(n,x,xval,i)
+       call location(n, x, xval, i)
     endif
 
-    slope=(y(i+1)-y(i))/(x(i+1)-x(i))
-    yval=y(i)+slope*(xval-x(i))
-
+    slope = (y(i+1)-y(i))/(x(i+1)-x(i))
+    yval = y(i)+slope*(xval-x(i))
   end subroutine linear_1d_interpolate_nonuniform
 
 
-pure  subroutine location(n,x,xval,k) !use bisection method to locate xval in an array
+  pure  subroutine location(n,x,xval,k) !use bisection method to locate xval in an array
     !return k (xval is located between x(k) and x(k+1)
     use constants,only:p_
     implicit none
@@ -2232,9 +2095,8 @@ end function random_yj
   end subroutine shift_to_minus_pi_positive_pi_range
 
 
-  subroutine one_dimensional_derivative(n,x,y,dydx)
-    use constants,only:p_
-    use constants,only:zero,one,two,twopi,one_half
+  subroutine one_dimensional_derivative(n, x, y, dydx)
+    use constants, only: p_, zero,one,two,twopi,one_half
     implicit none
 
     integer,intent(in):: n
@@ -2836,9 +2698,10 @@ subroutine read_gfile()
         write(*,*) 'Iphi>0'
      endif
      block !find out the direction of the troidal current
-       use math, only : laplace_cylindrical2d
+       use math, only : laplace_cylindrical2d, pnpoly
        real(p_), allocatable:: jphi(:,:)
        real(p_) :: dx, dz, s
+       integer :: in
 
        allocate(jphi(nx,nz))
        call laplace_cylindrical2d(psi(1:nx,1:nz), xarray, zarray, nx, nz, jphi)
@@ -2854,13 +2717,15 @@ subroutine read_gfile()
           s = 0
           do i=1,nx
              do j =1,nz
+                call PNPOLY(xarray(i),zarray(j), x_lcfs, z_lcfs, np_lcfs, IN)
+                if (IN .ne. 1) jphi(i,j) = 0 ! current outside of LCFS is assumed to be zero
                 write(u,'(4e16.5)') xarray(i), zarray(j), psi(i,j), jphi(i,j)
                 s = s + jphi(i,j)*dx*dz
              enddo
              write(u,*)
           enddo
-          write(*,*) 'total plasma current calculated from the poloidal magnetic flux (kA)=', s/1000.
-          write(*,*) "total plasma current given in g-file (kA)= ", current/1000.
+          write(*,*) 'Total plasma current within LCFS calculated from the poloidal magnetic flux (kA)=', s/1000.
+          write(*,*) "Total plasma current given in g-file (kA)= ", current/1000.
           close(u)
        endif
 
@@ -3401,7 +3266,7 @@ module magnetic_coordinates
   real(p_), dimension(:,:), allocatable :: tor_shift_mc, jacobian, abs_jacobian, qhat
   real(p_), dimension(:), allocatable :: tor_shift_left_bdry_minus_one 
   real(p_), dimension(:), allocatable :: jacobian_av
-  !GSpsi_array is Grad-Shafranov poloidal flux in SI units, i.e. poiloidal_magnetic_flux/twopi
+  !GSpsi_array is the poloidal flux appearing in the GS equation (i.e. poiloidal_magnetic_flux/twopi) in SI units (Web/rad)
   real(p_), dimension(:), allocatable :: GSpsi_array, pfn, tfn, minor_r_array, minor_r_prime_array
 
   real(p_), dimension(:,:),allocatable :: dl_mc, &
@@ -3409,57 +3274,57 @@ module magnetic_coordinates
        & grad_psi_r, grad_psi_z, &
        & grad_theta_r, grad_theta_z, &
        & grad_alpha_r, grad_alpha_z, grad_alpha_phi, &
-       & grad_psi, grad_alpha, grad_theta,&
-       & grad_psi_dot_grad_alpha, grad_psi_dot_grad_theta, grad_alpha_dot_grad_theta
+       & grad_psi, grad_alpha, grad_theta, &
+       & grad_psi_dot_grad_alpha, grad_psi_dot_grad_theta, grad_alpha_dot_grad_theta, &
+       & lapx, lapy ! laplacian of x and y
   real(p_), dimension(:), allocatable :: grad_alpha_r_left_bdry_minus_one, grad_alpha_z_left_bdry_minus_one
 
 end  module magnetic_coordinates
 
 module contour_mod
 contains
-  subroutine find_contour(psival, x_contour, z_contour)
-    ! Given a value of the poloidal flux, psival,
-    ! this subroutine find the magnetic surface corresponding to psival
+  subroutine find_contour(psival, xc, zc)
+    ! Given a value of the poloidal flux, find the magnetic surface
     use constants, only: p_
     use boundary, only: x_lcfs, z_lcfs, np_lcfs
     use radial_module, only: r_axis, z_axis
     implicit none
     real(p_), intent(in) :: psival
-    real(p_), intent(out) :: x_contour(np_lcfs), z_contour(np_lcfs)
-    real(p_), parameter:: xacc = 1.0d-6 !tolerance used in bi-section root-finder
-    real(p_), parameter:: huge = 1d30
+    real(p_), intent(out) :: xc(np_lcfs), zc(np_lcfs)
+    real(p_), parameter :: xacc = 1.0d-6 !tolerance used in bi-section root-finder
+    real(p_), parameter :: huge = 1d30
     real(p_) :: x1, x2, z1, z2, slope(np_lcfs), slope2(np_lcfs)
     integer :: i
 
-    do i=1,np_lcfs
+    do i = 1, np_lcfs
        if(x_lcfs(i)-r_axis .ne. 0._p_) then 
-          slope(i)= (z_lcfs(i)-z_axis)/(x_lcfs(i)-r_axis) !the slope for function Z=Z(X)
+          slope(i) = (z_lcfs(i)-z_axis)/(x_lcfs(i)-r_axis) !the slope for function Z=Z(X)
        else
           slope(i) = huge !I use compiler option that catches all erroneous arithmetic operation, I need to avoid dividing by zero
        endif
        if(z_lcfs(i)-z_axis .ne. 0._p_) then
-          slope2(i)=(x_lcfs(i)-r_axis)/(z_lcfs(i)-z_axis) !the slope for function X=X(Z)
+          slope2(i) = (x_lcfs(i)-r_axis)/(z_lcfs(i)-z_axis) !the slope for function X=X(Z)
        else
           slope2(i) = huge
        endif
     enddo
 
     do i = 1, np_lcfs-1 
-       if(abs(slope(i)).le.1.0_p_) then !use Z=Z(X) function, the reason that I switch between using function X=X(Z) and Z=Z(X) is to aviod large slope.
+       if(abs(slope(i)).le.1.0_p_) then ! to use Z=Z(X) function, to aviod large slope.
           x1 = r_axis
           x2 = x_lcfs(i) !+0.01 !shift left a little to gurrantee that the range is enough for a root to lie in
-          x_contour(i)=rtbis(one_dim_psi_func,x1,x2,xacc,r_axis,z_axis,slope(i),psival)
-          z_contour(i)=zfunc(r_axis,z_axis,slope(i),x_contour(i))
-       else !switch to using X=X(Z) function
-          z1=z_axis
-          z2=z_lcfs(i)
-          z_contour(i)=rtbis(one_dim_psi_func2,z1,z2,xacc,r_axis,z_axis,slope2(i),psival)
-          x_contour(i)=xfunc(r_axis,z_axis,slope2(i),z_contour(i)) 
+          xc(i) = rtbis(one_dim_psi_func,x1,x2,xacc,r_axis,z_axis,slope(i),psival)
+          zc(i) = zfunc(r_axis,z_axis,slope(i),xc(i))
+       else ! switch to using X=X(Z) function
+          z1 = z_axis
+          z2 = z_lcfs(i)
+          zc(i) = rtbis(one_dim_psi_func2,z1,z2,xacc,r_axis,z_axis,slope2(i),psival)
+          xc(i) = xfunc(r_axis,z_axis,slope2(i),zc(i)) 
        endif
     enddo
 
-    x_contour(np_lcfs) = x_contour(1) !i=1 and i=np_lcfs are identical
-    z_contour(np_lcfs) = z_contour(1) 
+    xc(np_lcfs) = xc(1) !i=1 and i=np_lcfs are identical
+    zc(np_lcfs) = zc(1) 
 
   end subroutine find_contour
 
@@ -3559,8 +3424,8 @@ subroutine construct_magnetic_coordinates()
   allocate(r_mag_surf0(np_lcfs, nrad))
   allocate(z_mag_surf0(np_lcfs, nrad))
   
-  do j =1, nrad
-     call find_contour(GSpsi_array(j),r_mag_surf0(:,j),z_mag_surf0(:,j))
+  do j = 1, nrad
+     call find_contour(GSpsi_array(j), r_mag_surf0(:,j), z_mag_surf0(:,j))
   enddo
 
   if(myid.eq.0) call diagnostic1()
@@ -3580,16 +3445,16 @@ subroutine construct_magnetic_coordinates()
   zgrid = [ (-pi+dtheta*(i-1), i = 1, mpol) ] !equilibrium theta grid
   itheta0 = (mpol+1)/2 !poloidal index corresponding to theta=0 (mpol is assumed odd)
 
-  allocate(r_mc(mpol,nrad))
-  allocate(z_mc(mpol,nrad))
+  allocate(r_mc(mpol, nrad))
+  allocate(z_mc(mpol, nrad))
 
   do j = 1, nrad
-     call construct_poloidal_coordinate(r_mag_surf0(:,j),z_mag_surf0(:,j),np_lcfs, &
-          & mpol,zgrid, r_mc(:,j), z_mc(:,j))
+     call construct_poloidal_coordinate(r_mag_surf0(:,j), z_mag_surf0(:,j), np_lcfs, &
+          & mpol, zgrid, r_mc(:,j), z_mc(:,j))
   enddo
 
-  allocate(dl_mc(mpol-1,nrad))
-  do j=1,nrad
+  allocate(dl_mc(mpol-1, nrad))
+  do j = 1, nrad
      call arc_length(r_mc(:,j), z_mc(:,j), mpol, dl_mc(:,j))
   enddo
 
@@ -3601,7 +3466,7 @@ subroutine construct_magnetic_coordinates()
   ygrid = [ (zero + dtor*(i-1), i = 1, mtor+1) ]
 
   call plasma_volume_of_computational_region(vol)
-  if ((myid==0) .and. (diagnosis .eqv. .true.)) call diagnostic2()
+  if ((myid==0) ) call diagnostic2()
   if((myid==0) .and. (diagnosis.eqv..true.)) call diagnostic3()
   deallocate(r_mag_surf0, z_mag_surf0)
 
@@ -3658,6 +3523,7 @@ end subroutine construct_magnetic_coordinates
 
 subroutine choose_radial_grids()
   use constants, only: p_
+  use domain_decomposition, only: myid
   use radial_module, only: psi_axis, psi_lcfs, j_fixed, radcor_fixed
   use magnetic_field, only: radcor_as_func_of_pfn, tfn_func_pfn
   use magnetic_coordinates, only: nrad, pfn_inner, pfn_bdry, &
@@ -3666,7 +3532,7 @@ subroutine choose_radial_grids()
        & radial_width !as output
   implicit none
   real(p_) :: dpfn
-  integer :: j
+  integer :: j, u
 
   allocate(pfn(nrad))
   allocate(tfn(nrad))  
@@ -3675,33 +3541,42 @@ subroutine choose_radial_grids()
   dpfn=(pfn_bdry-pfn_inner)/real(nrad-1)
   do j = 1, nrad !select some flux surfaces (labeld by GSpsi_array)
      pfn(j) = pfn_inner +dpfn*(j-1)
-     GSpsi_array(j)=psi_axis+pfn(j)*(psi_lcfs-psi_axis) !GSpsi=Aphi*R, this array is used in finding magnetic surfaces
-     xgrid(j)=radcor_as_func_of_pfn(pfn(j))
+     GSpsi_array(j) = psi_axis + pfn(j)*(psi_lcfs-psi_axis) !GSpsi=Aphi*R, this array is used in finding magnetic surfaces
+     xgrid(j) = radcor_as_func_of_pfn(pfn(j))
   enddo
 
   xlow = xgrid(1)
   xupp = xgrid(nrad)
-  
+
   radial_width = xgrid(nrad) - xgrid(1)
   dradcor = xgrid(2) - xgrid(1) !radial grid interval
   GSpsi_prime = psi_lcfs - psi_axis !dGSpsi/dx, x is the normalized poloidal magnetic flux
 
   j_fixed = nrad/2
-  radcor_fixed = xgrid(j_fixed) !the radcor of the center of computational region, used in flux tube model
+  radcor_fixed = xgrid(j_fixed) !the radcor of the center of computational region
 
   do j = 1, nrad
      tfn(j) = tfn_func_pfn(pfn(j))
   enddo
 
-  
+  if(myid==0) then
+     open(newunit=u, file='xgrid.txt')
+     do j = 1, nrad
+        write(u, *) xgrid(j), tfn(j)
+     enddo
+     close(u)
+  endif
+
 end subroutine choose_radial_grids
 
 
-subroutine construct_poloidal_coordinate(r_old,z_old,mpol_old, mpol, theta_new, r_new, z_new) !on a magnetic surface
+subroutine construct_poloidal_coordinate(r_old, z_old, mpol_old, mpol, theta_new, r_new, z_new) !on a magnetic surface
   use constants,only: p_, two,pi,twopi
   use control_parameters,only: poloidal_angle_type
   use magnetic_field, only : psi_gradient_func, b
   use math, only: arc_length
+  use interpolate_module, only: linear_1d_interpolate_nonuniform
+  use splines, only: spline3
   implicit none
   integer, intent(in) :: mpol_old, mpol
   real(p_), intent(in) :: r_old(mpol_old), z_old(mpol_old)
@@ -3713,25 +3588,25 @@ subroutine construct_poloidal_coordinate(r_old,z_old,mpol_old, mpol, theta_new, 
 
   call arc_length(r_old, z_old, mpol_old, dl)
   
-  theta_old(1)=0._p_
+  theta_old(1) = 0._p_
   if(poloidal_angle_type .eq. 'equal-arc') then
-     do i=2,mpol_old
+     do i = 2, mpol_old
         theta_old(i) = theta_old(i-1) + dl(i-1) !equal-arc-length poloidal angle
      enddo
   elseif(poloidal_angle_type .eq. 'equal-volume') then
-     do i=2,mpol_old
+     do i = 2, mpol_old
         rmid=0.5_p_*(r_old(i-1)+r_old(i))
         zmid=0.5_p_*(z_old(i-1)+z_old(i))
         theta_old(i)=theta_old(i-1)+dl(i-1)*rmid/psi_gradient_func(rmid,zmid) !equal-volume poloidal angle
      enddo
   elseif(poloidal_angle_type .eq. 'straight-field-line') then
-     do i=2,mpol_old
+     do i = 2, mpol_old
         rmid=0.5_p_*(r_old(i-1)+r_old(i))
         zmid=0.5_p_*(z_old(i-1)+z_old(i))
         theta_old(i)=theta_old(i-1)+dl(i-1)/(rmid*psi_gradient_func(rmid,zmid)) !straight-field-line poloidal angle
      enddo
   elseif(poloidal_angle_type .eq. 'Boozer') then
-     do i=2,mpol_old
+     do i = 2, mpol_old
         rmid=0.5_p_*(r_old(i-1)+r_old(i))
         zmid=0.5_p_*(z_old(i-1)+z_old(i))
         theta_old(i)=theta_old(i-1)+dl(i-1)*b(rmid,zmid)**2*rmid/psi_gradient_func(rmid,zmid)
@@ -3744,22 +3619,30 @@ subroutine construct_poloidal_coordinate(r_old,z_old,mpol_old, mpol, theta_new, 
   theta_old = theta_old*twopi/theta_old(mpol_old) - pi 
 
   !interpolate R  to theta_new gridpoints
-  call spline(theta_old, r_old, mpol_old, 2.d30, 2.d30, y2) !prepare the second order derivative 
+!!$  call spline(theta_old, r_old, mpol_old, 2.d30, 2.d30, y2) !prepare the second order derivative 
+!!$  do i = 2, mpol-1
+!!$     call splint(theta_old, r_old, y2, mpol_old, theta_new(i), r_new(i))
+!!$  enddo
   do i = 2, mpol-1
-     call splint(theta_old,r_old,y2,mpol_old,theta_new(i), r_new(i))
+     call linear_1d_interpolate_nonuniform(mpol_old, theta_old, r_old, theta_new(i), r_new(i))
+  enddo
+  
+  !interpolate Z  to theta_new gridpoints
+!!$  call spline(theta_old, z_old, mpol_old, 2.d30, 2.d30, y2) !prepare the second order derivative 
+!!$  do i = 2, mpol-1
+!!$     call splint(theta_old, z_old, y2, mpol_old, theta_new(i), z_new(i))
+!!$  enddo
+  do i = 2, mpol-1
+     call linear_1d_interpolate_nonuniform(mpol_old, theta_old, z_old, theta_new(i), z_new(i))
   enddo
 
-  !interpolate Z  to theta_new gridpoints
-  call spline(theta_old, z_old, mpol_old, 2.d30, 2.d30, y2) !prepare the second order derivative 
-  do i = 2, mpol-1
-     call splint(theta_old,z_old,y2,mpol_old,theta_new(i), z_new(i))
-  enddo
+!!$    r_new(2:mpol-1) = spline3(theta_old, r_old(:), theta_new(2:mpol-1))
+!!$    z_new(2:mpol-1) = spline3(theta_old, z_old(:), theta_new(2:mpol-1))
 
   r_new(1) = r_old(1) !ending points are not included in the above interpolation
   z_new(1) = z_old(1)
   r_new(mpol) = r_new(1)
   z_new(mpol) = z_new(1)
-
 end subroutine construct_poloidal_coordinate
 
 
@@ -3837,7 +3720,7 @@ subroutine calculate_dvol(m, dvol) !one dtheta2 cell can include multiple equili
   use domain_decomposition, only: ipol_eq, dtheta2
   use magnetic_coordinates, only: nrad, mpol, nrad, abs_jacobian, dradcor, dtor
   implicit none
-  integer, intent(in) :: m
+  integer, intent(in) :: m ! dtheta2 = m*dtheta
   real(p_), intent(out), allocatable :: dvol(:)
   real(p_) :: jac(-m:mpol+m, nrad), jac0
   integer :: i, i1, i2, s, j, jeq
@@ -3881,10 +3764,9 @@ module table_in_mc !used in computing guiding-center drift
   implicit none
   save
   real(p_), dimension(:,:), allocatable :: br_mc, bz_mc, bphi_mc, &
-       & bp_mc, b_mc, bdgxcgy, & !here bdgxcgy is B0_dot_grad_x_cross_grad_y. Similar names for other cooordinate combination.
-       & bdgxcgz, bdgycgz, &
+       & bp_mc, b_mc, bdgxcgy, bdgxcgz, bdgycgz, &
        & w1,w2,w3,w4,w5,w5p,w6,w7,w8,w8p,w9,w10,w12,w13
-
+   !here bdgxcgy is B0_dot_grad_x_cross_grad_y. Similar names for other cooordinate combination.
 contains
 
   subroutine prepare_table_in_mc()
@@ -3915,7 +3797,7 @@ contains
     real(p_) :: grad_psi_val,grad_alpha_val, grad_psi_dot_grad_alpha_val
     real(p_) :: grad_psi_dot_grad_theta_val,grad_alpha_dot_grad_theta_val
     real(p_) :: dalpha_dr_val,dalpha_dz_val,dalpha_dphi_val
-    integer :: i,j
+    integer :: i, j
 
     allocate(w1(mpol,nrad))
     allocate(w2(mpol,nrad))
@@ -3941,11 +3823,11 @@ contains
     allocate(bp_mc(mpol,nrad))
 
 
-    do j=1,nrad
-       radcor=xgrid(j)
+    do j = 1, nrad
+       radcor = xgrid(j)
        do i=1,mpol
-          r=r_mc(i,j)
-          z=z_mc(i,j)
+          r = r_mc(i,j)
+          z = z_mc(i,j)
           brval=br(r,z)
           bzval=bz(r,z)
           bphival=bphi(r,z)
@@ -3955,11 +3837,11 @@ contains
           unitbr=brval/bval
           unitbz=bzval/bval
           unitbphi=bphival/bval
-          curl_unitb_rcomp=-unitbphi_z(r,z)
-          curl_unitb_phicomp=unitbr_z(r,z)-unitbz_r(r,z)
-          curl_unitb_zcomp=unitbphi_r(r,z)+unitbphi/r
+          curl_unitb_rcomp = -unitbphi_z(r,z)
+          curl_unitb_phicomp = unitbr_z(r,z)-unitbz_r(r,z)
+          curl_unitb_zcomp = unitbphi_r(r,z)+unitbphi/r
 
-          unitb_dot_curl_unitb=unitbr*curl_unitb_rcomp +unitbphi*curl_unitb_phicomp&
+          unitb_dot_curl_unitb=unitbr*curl_unitb_rcomp +unitbphi*curl_unitb_phicomp &
                & +unitbz*curl_unitb_zcomp
 
           dradial_dr_val = grad_psi_r(i,j)
@@ -3977,7 +3859,8 @@ contains
           !        if(i.eq.mpol)    ddelta_dz_val=ddelta_dz_lsf_midplane_twopi(r) !at theta=twopi cut
 
 !!$!write(*,*) 'i,j=',dradial_dr_val, dradial_dr_func2(r,z),dradial_dz_val, dradial_dz_func2(r,z)
-          w1(i,j)=unitb_dot_curl_unitb/bval
+          w1(i,j) = unitb_dot_curl_unitb/bval
+          !w1(i,j) = 0 ! approximation, tested, no difference from the above line
           w2(i,j)=unitbr*dtheta_dr_val+unitbz*dtheta_dz_val
           !      w2(i,j)=-(psi_lcfs-psi_axis)/(bval*jacobian(i,j))
           w3(i,j)=curl_unitb_rcomp/bval*dradial_dr_val+curl_unitb_zcomp/bval*dradial_dz_val
@@ -4174,84 +4057,82 @@ end module func_in_mc
 
 module calculate_toroidal_shift_module
 contains
-subroutine calculate_toroidal_shift(psival,x_contour,z_contour,np_lcfs,end_i,r,z,tor_shift) !tor_shift=q*delta. zeta=phi-tor_shift
-  use constants,only: p_, one_half
-  ! use poloidal_flux_2d,only: nx,nz,xarray,zarray
-  use magnetic_coordinates,only:sign_of_jacobian,sign_of_GSpsi_prime, itheta0
-  use radial_module,only:psi_axis,psi_lcfs
-  use domain_decomposition,only:myid
-  use magnetic_field, only : psi_z_func,psi_r_func, g_func !toroidal field function
-  implicit none
-  real(p_),intent(in):: psival
-  integer,intent(in):: np_lcfs,end_i
-  real(p_):: x_contour(np_lcfs),z_contour(np_lcfs)
-  real(p_),intent(in):: r,z
-  real(p_),intent(out):: tor_shift
+  subroutine calculate_toroidal_shift(psival,x_contour,z_contour,np_lcfs,end_i,r,z,tor_shift) 
+    use constants, only: p_, one_half
+    use magnetic_coordinates, only: sign_of_jacobian,sign_of_GSpsi_prime, itheta0
+    use radial_module, only: psi_axis,psi_lcfs
+    use domain_decomposition, only: myid
+    use magnetic_field, only : psi_z_func,psi_r_func, g_func !toroidal field function
+    implicit none
+    real(p_), intent(in) :: psival
+    integer, intent(in) :: np_lcfs,end_i
+    real(p_) :: x_contour(np_lcfs),z_contour(np_lcfs)
+    real(p_), intent(in) :: r,z
+    real(p_), intent(out) :: tor_shift
+    real(p_) :: x_mid,z_mid,gx0,dl, g_value
+    real(p_) :: pfn,mr,costh,sinth,r0
+    integer :: i
 
-  real(p_):: x_mid,z_mid,gx0,dl, g_value
-  real(p_):: pfn,mr,costh,sinth,r0
-  integer:: i
+    g_value = g_func(psival)
 
-  g_value=g_func(psival)
+    tor_shift = 0._p_
+    if (end_i .lt. itheta0) then 
+       do i = itheta0-1, end_i+1, -1
+          x_mid=(x_contour(i)+x_contour(i-1))*one_half
+          z_mid=(z_contour(i)+z_contour(i-1))*one_half
+          gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
+          dl=-sqrt((x_contour(i)-x_contour(i-1))**2+(z_contour(i)-z_contour(i-1))**2)
+          tor_shift=tor_shift+g_value/(x_mid*gx0)*dl
+       enddo
+       x_mid=(x_contour(end_i+1)+r)*one_half
+       z_mid=(z_contour(end_i+1)+z)*one_half
+       gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
+       dl=-sqrt((x_contour(end_i+1)-r)**2+(z_contour(end_i+1)-z)**2)
+       tor_shift=tor_shift+g_value/(x_mid*gx0)*dl
 
-  tor_shift=0._p_
-  if (end_i.lt.itheta0) then 
-     do i=itheta0-1,end_i+1,-1
-        x_mid=(x_contour(i)+x_contour(i-1))*one_half
-        z_mid=(z_contour(i)+z_contour(i-1))*one_half
-        gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
-        dl=-sqrt((x_contour(i)-x_contour(i-1))**2+(z_contour(i)-z_contour(i-1))**2)
-        tor_shift=tor_shift+g_value/(x_mid*gx0)*dl
-     enddo
-     x_mid=(x_contour(end_i+1)+r)*one_half
-     z_mid=(z_contour(end_i+1)+z)*one_half
-     gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
-     dl=-sqrt((x_contour(end_i+1)-r)**2+(z_contour(end_i+1)-z)**2)
-     tor_shift=tor_shift+g_value/(x_mid*gx0)*dl
-
-  elseif(end_i.ge.itheta0) then
-     x_contour(end_i+1)=r !replace No. end_i+1 point by the given point (r,z)
-     z_contour(end_i+1)=z
-     do i=itheta0, end_i
-        x_mid=(x_contour(i)+x_contour(i+1))*one_half
-        z_mid=(z_contour(i)+z_contour(i+1))*one_half
-        gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
-        dl=sqrt((x_contour(i)-x_contour(i+1))**2+(z_contour(i)-z_contour(i+1))**2)
-        tor_shift=tor_shift+g_value/(x_mid*gx0)*dl
-     enddo
-  endif
-  !--for testing----analytical formula, for concentric circular configuration
+    elseif(end_i.ge.itheta0) then
+       x_contour(end_i+1)=r !replace No. end_i+1 point by the given point (r,z)
+       z_contour(end_i+1)=z
+       do i=itheta0, end_i
+          x_mid=(x_contour(i)+x_contour(i+1))*one_half
+          z_mid=(z_contour(i)+z_contour(i+1))*one_half
+          gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
+          dl=sqrt((x_contour(i)-x_contour(i+1))**2+(z_contour(i)-z_contour(i+1))**2)
+          tor_shift=tor_shift+g_value/(x_mid*gx0)*dl
+       enddo
+    endif
+    !--for testing----analytical formula, for concentric circular configuration
 !!$  r0=1.32_p_
 !!$  mr=sqrt((x_contour(end_i+1)-r0)**2+(z_contour(end_i+1)-0._p_)**2)
 !!$  costh=(x_contour(end_i+1)-r0)/mr
 !!$  sinth=z_contour(end_i+1)/mr
 !!$  pfn=(psival-psi_axis)/(psi_lcfs-psi_axis)
 !!$  tor_shift=2*qfunc(pfn)*atan((r0-mr)/sqrt(r0**2-mr**2)*sinth/(costh+1))
-  !----for tesing----------------------
+    !----for tesing----------------------
 
 !!$  do i=2,end_i+1
 !!$     x_mid=(x_contour(i-1)+x_contour(i))*one_half
 !!$     tor_shift=tor_shift+g_value/(x_mid*gx0(i-1))*dl(i-1)
 !!$  enddo
-  tor_shift=tor_shift*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
-end subroutine calculate_toroidal_shift
+    tor_shift=tor_shift*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
+  end subroutine calculate_toroidal_shift
 
 
-pure subroutine calculate_toroidal_shift2(j, g_value, x_contour,z_contour, jacob, m, &
-     & tor_shift, tor_shift_left_bdry_minus_one)
-  !cf. calculate_toroidal_shift, the differences are (1) g_value instead of psival is provided as input;
-  !(2) compute a series of tor_shift on a magnetic surface (rather than a single value). The range of theta is [-pi:pi]
-  use constants, only: p_, one_half, two
-  use magnetic_coordinates, only: dtheta, sign_of_jacobian,sign_of_GSpsi_prime,itheta0, GSpsi_array, GSpsi_prime, qhat
-  use domain_decomposition, only: dtheta2, multi_eq_cells
-  use magnetic_field, only: psi_z_func, psi_r_func
-  implicit none
-  integer,intent(in) :: j, m
-  real(p_),intent(in) :: g_value
-  real(p_),intent(in) :: x_contour(m), z_contour(m), jacob(m)
-  real(p_),intent(out) :: tor_shift(m), tor_shift_left_bdry_minus_one
-  real(p_) :: gx0, dl, sum, x_mid, z_mid, jac_mid, qhat_mid
-  integer :: i
+  pure subroutine calculate_toroidal_shift2(j, g_value, x_contour,z_contour, jacob, m, &
+       & tor_shift, tor_shift_left_bdry_minus_one)
+    !cf. calculate_toroidal_shift, the differences are (1) g_value instead of psival is provided as input;
+    !(2) compute a series of tor_shift on a magnetic surface (rather than a single value). The theta range is [-pi:pi]
+    use constants, only: p_, one_half, two
+    use magnetic_coordinates, only: dtheta, sign_of_jacobian,sign_of_GSpsi_prime,itheta0, GSpsi_array, GSpsi_prime, qhat
+    use domain_decomposition, only: dtheta2, multi_eq_cells
+    use magnetic_field, only: psi_z_func, psi_r_func
+    implicit none
+    integer,intent(in) :: j, m
+    real(p_),intent(in) :: g_value
+    real(p_),intent(in) :: x_contour(m), z_contour(m), jacob(m)
+    real(p_),intent(out) :: tor_shift(m), tor_shift_left_bdry_minus_one
+    real(p_) :: gx0, dl, sum, x_mid, z_mid, jac_mid, qhat_mid
+    integer :: i
 
 !!$  tor_shift(itheta0) = 0._p_
 !!$  do i=itheta0+1, m !for theta in (0:pi]
@@ -4271,25 +4152,25 @@ pure subroutine calculate_toroidal_shift2(j, g_value, x_contour,z_contour, jacob
 !!$  enddo
 !!$  tor_shift = tor_shift*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
 
-  !-------------another method------------:
-  tor_shift(itheta0) = 0._p_
-  do i = itheta0 + 1, m !for theta in (0:pi]
-     x_mid = (x_contour(i-1) + x_contour(i))/two
-     jac_mid = (jacob(i-1) + jacob(i))/two
-     qhat_mid = (qhat(i-1,j) + qhat(i,j))/two
-     !tor_shift(i) = tor_shift(i-1) - g_value/(x_mid**2)*jac_mid/GSpsi_prime*dtheta
-     tor_shift(i) = tor_shift(i-1) + qhat_mid*dtheta
-  enddo
+    !-------------another method------------:
+    tor_shift(itheta0) = 0._p_
+    do i = itheta0 + 1, m !for theta in (0:pi]
+       x_mid = (x_contour(i-1) + x_contour(i))/two
+       jac_mid = (jacob(i-1) + jacob(i))/two
+       qhat_mid = (qhat(i-1,j) + qhat(i,j))/two
+       !tor_shift(i) = tor_shift(i-1) - g_value/(x_mid**2)*jac_mid/GSpsi_prime*dtheta
+       tor_shift(i) = tor_shift(i-1) + qhat_mid*dtheta
+    enddo
 
-  do i = itheta0 - 1, 1, -1 !for theta in (0:-pi]
-     x_mid = (x_contour(i+1)+x_contour(i))/two
-     jac_mid = (jacob(i+1)+jacob(i))/two
-     qhat_mid = (qhat(i+1,j) + qhat(i,j))/two
-     !tor_shift(i) = tor_shift(i+1) + g_value/(x_mid**2)*jac_mid/GSpsi_prime*dtheta
-     tor_shift(i) = tor_shift(i+1) - qhat_mid*dtheta
-  enddo
-!---------------------------------------
-  !another way of calculating tor_shift
+    do i = itheta0 - 1, 1, -1 !for theta in (0:-pi]
+       x_mid = (x_contour(i+1)+x_contour(i))/two
+       jac_mid = (jacob(i+1)+jacob(i))/two
+       qhat_mid = (qhat(i+1,j) + qhat(i,j))/two
+       !tor_shift(i) = tor_shift(i+1) + g_value/(x_mid**2)*jac_mid/GSpsi_prime*dtheta
+       tor_shift(i) = tor_shift(i+1) - qhat_mid*dtheta
+    enddo
+    !---------------------------------------
+    !another way of calculating tor_shift
 !!$ tor_shift(1)=0._p_
 !!$  do i=1,m-1 
 !!$     x_mid=(x_contour(i+1)+x_contour(i))*one_half
@@ -4308,49 +4189,49 @@ pure subroutine calculate_toroidal_shift2(j, g_value, x_contour,z_contour, jacob
 !!$     dl=sqrt((x_contour(i)-x_contour(i-1))**2+(z_contour(i)-z_contour(i-1))**2)
 !!$     tor_shift(i)=tor_shift(i-1)+g_value/(x_mid*gx0)*dl
 !!$  enddo
-  !tor_shift = tor_shift*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
+    !tor_shift = tor_shift*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
 
-  tor_shift_left_bdry_minus_one = tor_shift(1) - (tor_shift(m) - tor_shift(m-multi_eq_cells))
+    tor_shift_left_bdry_minus_one = tor_shift(1) - (tor_shift(m) - tor_shift(m-multi_eq_cells))
 
-end subroutine calculate_toroidal_shift2
+  end subroutine calculate_toroidal_shift2
 
 
-subroutine calculate_toroidal_shift_at_theta_cut(psival,x_contour,z_contour,np,tor_shift_a,tor_shift_b)
-  use constants,only: p_, one_half
-  use magnetic_coordinates,only: sign_of_jacobian, sign_of_GSpsi_prime, itheta0
-  use domain_decomposition,only:myid
-  use magnetic_field, only : psi_z_func,psi_r_func, g_func
-  implicit none
-  real(p_),intent(in):: psival
-  integer,intent(in):: np
-  real(p_),intent(in):: x_contour(np),z_contour(np)
-  real(p_),intent(out):: tor_shift_a, tor_shift_b
-  real(p_):: x_mid,z_mid,gx0,dl, g_value
-  integer:: i
+  subroutine calculate_toroidal_shift_at_theta_cut(psival,x_contour,z_contour,np,tor_shift_a,tor_shift_b)
+    use constants,only: p_, one_half
+    use magnetic_coordinates,only: sign_of_jacobian, sign_of_GSpsi_prime, itheta0
+    use domain_decomposition,only:myid
+    use magnetic_field, only : psi_z_func,psi_r_func, g_func
+    implicit none
+    real(p_),intent(in):: psival
+    integer,intent(in):: np
+    real(p_),intent(in):: x_contour(np),z_contour(np)
+    real(p_),intent(out):: tor_shift_a, tor_shift_b
+    real(p_):: x_mid,z_mid,gx0,dl, g_value
+    integer:: i
 
-  g_value=g_func(psival)
+    g_value=g_func(psival)
 
-  tor_shift_b=0._p_
-  do i=itheta0+1,np ! for location near the cut above the midplane
-     x_mid=(x_contour(i)+x_contour(i-1))*one_half
-     z_mid=(z_contour(i)+z_contour(i-1))*one_half
-     gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
-     dl=sqrt((x_contour(i)-x_contour(i-1))**2+(z_contour(i)-z_contour(i-1))**2)
-     tor_shift_b=tor_shift_b+g_value/(x_mid*gx0)*dl
-  enddo
+    tor_shift_b=0._p_
+    do i=itheta0+1,np ! for location near the cut above the midplane
+       x_mid=(x_contour(i)+x_contour(i-1))*one_half
+       z_mid=(z_contour(i)+z_contour(i-1))*one_half
+       gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
+       dl=sqrt((x_contour(i)-x_contour(i-1))**2+(z_contour(i)-z_contour(i-1))**2)
+       tor_shift_b=tor_shift_b+g_value/(x_mid*gx0)*dl
+    enddo
 
-  tor_shift_a=0._p_
-  do i=itheta0,2,-1 ! for location near the cut below the midplane
-     x_mid=(x_contour(i)+x_contour(i-1))*one_half
-     z_mid=(z_contour(i)+z_contour(i-1))*one_half
-     gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
-     dl=-sqrt((x_contour(i)-x_contour(i-1))**2+(z_contour(i)-z_contour(i-1))**2)
-     tor_shift_a=tor_shift_a+g_value/(x_mid*gx0)*dl
-  enddo
+    tor_shift_a=0._p_
+    do i=itheta0,2,-1 ! for location near the cut below the midplane
+       x_mid=(x_contour(i)+x_contour(i-1))*one_half
+       z_mid=(z_contour(i)+z_contour(i-1))*one_half
+       gx0=sqrt((psi_z_func(x_mid,z_mid))**2+(psi_r_func(x_mid,z_mid))**2)
+       dl=-sqrt((x_contour(i)-x_contour(i-1))**2+(z_contour(i)-z_contour(i-1))**2)
+       tor_shift_a=tor_shift_a+g_value/(x_mid*gx0)*dl
+    enddo
 
-  tor_shift_a=tor_shift_a*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
-  tor_shift_b=tor_shift_b*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
-end subroutine calculate_toroidal_shift_at_theta_cut
+    tor_shift_a=tor_shift_a*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
+    tor_shift_b=tor_shift_b*(-sign_of_jacobian)/sign_of_GSpsi_prime !include the correct sign
+  end subroutine calculate_toroidal_shift_at_theta_cut
 end module calculate_toroidal_shift_module
 
 
@@ -4360,10 +4241,9 @@ subroutine calculate_metric()
        & tor_shift_mc, tor_shift_left_bdry_minus_one, & !output
        & qhat, jacobian, & !as output
        & pfn_inner,pfn_bdry,GSpsi_array, &
-       & zgrid,xgrid, &
-       & sign_of_jacobian,sign_of_GSpsi_prime, GSpsi_prime, &
-       & grad_psi, grad_alpha,grad_theta,&
-       & grad_psi_dot_grad_alpha,grad_psi_dot_grad_theta,grad_alpha_dot_grad_theta !output
+       & zgrid, xgrid, &
+       & sign_of_jacobian,sign_of_GSpsi_prime, GSpsi_prime , grad_psi 
+
   use radial_module, only: psi_lcfs,psi_axis, npsi, sign_bphi, qpsi
   use radial_module, only: q_with_sign, qrad !as output
   use magnetic_field, only : g_func, qfunc
@@ -4402,8 +4282,8 @@ subroutine calculate_metric()
      enddo
   enddo
 
-  do j=1,nrad
-     g=g_func(GSpsi_array(j))
+  do j = 1, nrad
+     g = g_func(GSpsi_array(j))
      call calculate_toroidal_shift2(j, g, r_mc(:,j), z_mc(:,j), jacobian(:,j), mpol, &
           & tor_shift_mc(:,j), tor_shift_left_bdry_minus_one(j))
 
@@ -4425,12 +4305,11 @@ contains
     integer:: i,u
     write(*,*) 'maximum of tor_shift_mc=', maxval(tor_shift_mc)
     write(*,*) 'minimum of tor_shift_mc=', minval(tor_shift_mc)
-    open(newunit=u,file='tor_shift_mc.txt')
-    do j=1,nrad
-       do i=1,mpol
-          write(u,*) r_mc(i,j), z_mc(i,j), tor_shift_mc(i,j), qhat(i,j)
+    open(newunit=u,file='qhat.txt')
+    do j = 1, nrad
+       do i = 1, mpol
+          write(u,*) r_mc(i,j), z_mc(i,j), qhat(i,j), tor_shift_mc(i,j)
        enddo
-       write(u,*)
        write(u,*)
     enddo
     close(u)
@@ -4439,27 +4318,16 @@ contains
   subroutine diagnostic2()
     use magnetic_coordinates, only : pfn, dl_mc
     use func_in_mc, only: minor_r_radcor
-    integer:: i,u
-
+    integer :: i, u
     real(p_) :: s, q2
-    open(newunit=u,file="mc_derivatives_mc3.txt")
-    do i=1,mpol
-       do j=1,nrad
-          write(u,'(2i8.4,9(1pe14.5))')  i,j,grad_alpha(i,j),grad_psi_dot_grad_alpha(i,j),&
-               & grad_psi(i,j),jacobian(i,j),grad_alpha_dot_grad_theta(i,j),&
-               & tor_shift_mc(i,j),grad_psi_dot_grad_theta(i,j),zgrid(i),xgrid(j)
-       enddo
-       write(u,*)
-    enddo
-    close(u)
 !!$     do j=1,nrad
 !!$        write(*,*) j,xgrid(j),minor_r_radcor(xgrid(j)),r_mag_surf0(1,j)-r_axis,&
 !!$             & minor_r_prime(xgrid(j))
 !!$     enddo
     open(newunit=u,file="q2.txt")
-    do j=1,nrad
-       s=0
-       do i=1,mpol-1
+    do j = 1, nrad
+       s = 0
+       do i = 1, mpol-1
           s = s + g_func(GSpsi_array(j))/(grad_psi(i,j)*(psi_lcfs-psi_axis)*r_mc(i,j))*dl_mc(i,j)
        enddo
        q2 = s/twopi
@@ -4473,16 +4341,19 @@ end subroutine calculate_metric
 
 subroutine calculate_gradients_of_psi_and_theta()
   use constants, only: p_, zero, one, two
-  use magnetic_coordinates, only: m=>mpol, n=>nrad, r=>r_mc, z=>z_mc, dtheta, dradcor,&
-   & jacobian, abs_jacobian, jacobian_av, & !as output
-   & rth, zth, rpsi, zpsi, grad_psi, grad_theta, grad_psi_dot_grad_theta, & !as output
-   & grad_psi_r, grad_psi_z, grad_theta_r, grad_theta_z !as output
+  use magnetic_coordinates, only: m=>mpol, n=>nrad, r=>r_mc, z=>z_mc, dtheta, dradcor, xgrid, zgrid, &
+       & jacobian, abs_jacobian, jacobian_av, & !as output
+       & rth, zth, rpsi, zpsi, grad_psi, grad_theta, grad_psi_dot_grad_theta, & !as output
+       & grad_psi_r, grad_psi_z, grad_theta_r, grad_theta_z, lapx !as output
   use domain_decomposition, only: myid
+  use splines, only: spline3ders
+  use math, only: one_dimensional_derivative
   !use magnetic_field, only: minor_r_prime, minor_r_radcor
   implicit none
-  integer :: i,j,u
+  integer :: i, j, u
   real(p_) ::  minor_r_prime_val
-  
+  real(p_), allocatable :: a(:,:), b(:,:), apsi(:,:), bth(:,:)
+
   allocate(jacobian(m,n))
   allocate(abs_jacobian(m,n))
   allocate(jacobian_av(n))
@@ -4497,27 +4368,58 @@ subroutine calculate_gradients_of_psi_and_theta()
   allocate(zpsi(m,n))
   allocate(rth(m,n))
   allocate(zth(m,n))
+  allocate(lapx(m,n))
 
-  !call partial_derivative_in_mc(m,n,r,z,dtheta,dradcor,rpsi,rth,zpsi,zth,jacobian)
-  call partial_derivative_in_mc2(m,n,r,z,dtheta,dradcor,rpsi,rth,zpsi,zth,jacobian) 
+  call partial_derivative_in_mc(m,n,r,z,dtheta,dradcor,rpsi,rth,zpsi,zth,jacobian)
+  !call partial_derivative_in_mc2(m,n,r,z,dtheta,dradcor,rpsi,rth,zpsi,zth,jacobian) 
 
   abs_jacobian = abs(jacobian)
-  
-  grad_psi=r/abs_jacobian*sqrt(zth**2+rth**2)
-  grad_theta=r/abs_jacobian*sqrt(zpsi**2+rpsi**2)
-  grad_psi_dot_grad_theta=-(r/jacobian)**2*(zth*zpsi+rth*rpsi)
+
+  grad_psi = r/abs_jacobian*sqrt(zth**2+rth**2)
+  grad_theta = r/abs_jacobian*sqrt(zpsi**2+rpsi**2)
+  grad_psi_dot_grad_theta = -(r/jacobian)**2*(zth*zpsi+rth*rpsi)
 
   grad_psi_r = -r/jacobian*zth
   grad_psi_z = r/jacobian*rth
   grad_theta_r = r/jacobian*zpsi
   grad_theta_z = -r/jacobian*rpsi
 
-  do j = 1,n
+  do j = 1, n
      jacobian_av(j) = sum(abs_jacobian(1:m-1,j))/(m-1) !uniform theta grid is assumed
   enddo
-!  if(myid.eq.0) call plot_psi_r_z_theta_r_z_mc()
 
+  allocate(a(m,n), apsi(m,n))
+  allocate(b(m,n), bth(m,n))
+  a = jacobian * grad_psi**2
+  b = jacobian * grad_psi_dot_grad_theta
+  do i = 1, m
+     !call spline3ders(xgrid, a(i,:), xgrid, dynew=apsi(i,:))
+     call one_dimensional_derivative(n, xgrid, a(i,:), apsi(i,:))
+  enddo
+
+  do j = 1, n
+     !call spline3ders(zgrid, b(:,j), zgrid, dynew=bth(:,j))
+     call one_dimensional_derivative(m, zgrid, b(:,j), bth(:,j))
+  enddo
+
+  lapx = (apsi + bth)/jacobian
+  
+  if(myid==0) call diagnostic()
+  !if(myid==0) call plot_psi_r_z_theta_r_z_mc()
 contains
+
+  subroutine diagnostic()
+    open(newunit=u,file="gradxz.txt")
+    do i = 1, m
+       do j = 1, n
+          write(u,'(99(1pe14.5))')  r(i,j), z(i,j),  grad_psi(i,j), &
+               & grad_psi_dot_grad_theta(i,j), jacobian(i,j), lapx(i,j), zgrid(i), xgrid(j)
+       enddo
+       write(u,*)
+    enddo
+    close(u)
+  end subroutine diagnostic
+
 !!$  subroutine plot_psi_r_z_theta_r_z_mc()
 !!$    use magnetic_coordinates,only: zgrid,xgrid
 !!$    integer:: u
@@ -4554,17 +4456,20 @@ end subroutine calculate_gradients_of_psi_and_theta
 subroutine calculate_gradients_of_generalized_toroidal_angle() 
   use constants,only: p_, zero,one,two
   use control_parameters, only : diagnosis
-  use magnetic_coordinates,only: m=>mpol, n=>nrad, r=>r_mc, z=>z_mc, &
-  & tor_shift_mc,jacobian,dtheta,dradcor, &
-  & rpsi,zpsi,rth,zth, &
-  & grad_alpha_r, grad_alpha_z, grad_alpha_phi, & !as output 
-  & grad_alpha, grad_psi_dot_grad_alpha, grad_alpha_dot_grad_theta, & !as output
-  & grad_alpha_r_left_bdry_minus_one, grad_alpha_z_left_bdry_minus_one !as output 
+  use magnetic_coordinates,only: m=>mpol, n=>nrad, r=>r_mc, z=>z_mc, xgrid, zgrid, &
+       & tor_shift_mc,jacobian,dtheta,dradcor, &
+       & rpsi,zpsi,rth,zth, &
+       & grad_alpha_r, grad_alpha_z, grad_alpha_phi, & !as output 
+       & grad_alpha, grad_psi_dot_grad_alpha, grad_alpha_dot_grad_theta, lapy, & !as output
+       & grad_alpha_r_left_bdry_minus_one, grad_alpha_z_left_bdry_minus_one !as output
+  use splines, only: spline3ders
+  use math, only: one_dimensional_derivative
   use domain_decomposition,only: myid, dtheta2
   implicit none
   real(p_) :: tor_shift_psi(m,n), tor_shift_th(m,n)
   real(p_) :: tor_shift_psi_left_bdry_minus_one(n)
-  integer :: i,j
+  real(p_), allocatable :: a(:,:), b(:,:), apsi(:,:), bth(:,:)
+  integer :: i, j, u
 
   allocate(grad_alpha_r(m,n))
   allocate(grad_alpha_z(m,n))
@@ -4575,8 +4480,10 @@ subroutine calculate_gradients_of_generalized_toroidal_angle()
   allocate(grad_alpha_r_left_bdry_minus_one(n))
   allocate(grad_alpha_z_left_bdry_minus_one(n))
 
-  call partial_derivative_of_tor_shift_in_mc2(m,n,tor_shift_mc,dtheta,dradcor,tor_shift_psi,tor_shift_th, &
+  call partial_derivative_of_tor_shift_in_mc(m,n,tor_shift_mc,dtheta,dradcor,tor_shift_psi,tor_shift_th, &
        & tor_shift_psi_left_bdry_minus_one) 
+  !call partial_derivative_of_tor_shift_in_mc2(m,n,tor_shift_mc,dtheta,dradcor,tor_shift_psi,tor_shift_th, &
+  !     & tor_shift_psi_left_bdry_minus_one) 
   grad_alpha_r = tor_shift_psi*r/jacobian*zth - tor_shift_th*r/jacobian*zpsi
   grad_alpha_z = tor_shift_th*r/jacobian*rpsi - tor_shift_psi*r/jacobian*rth
   grad_alpha_phi = one/r
@@ -4585,17 +4492,51 @@ subroutine calculate_gradients_of_generalized_toroidal_angle()
   grad_alpha_dot_grad_theta=grad_alpha_r*r/jacobian*zpsi-grad_alpha_z*r/jacobian*rpsi
 
   !i=m-1 !wrong
-  i=m-NINT(dtheta2/dtheta) !dtheta2 is the grid spacing for the perturbations and dtheta is the equilibrium grid spacing.
-  do j=1,n
+  i = m - NINT(dtheta2/dtheta)
+  !dtheta2 is the grid spacing for the perturbations and dtheta is the equilibrium grid spacing.
+  do j = 1, n
      grad_alpha_r_left_bdry_minus_one(j)=tor_shift_psi_left_bdry_minus_one(j)*r(i,j)/jacobian(i,j)*zth(i,j)&
           & -tor_shift_th(i,j)*r(i,j)/jacobian(i,j)*zpsi(i,j)
      grad_alpha_z_left_bdry_minus_one(j)=tor_shift_th(i,j)*r(i,j)/jacobian(i,j)*rpsi(i,j)&
           & -tor_shift_psi_left_bdry_minus_one(j)*r(i,j)/jacobian(i,j)*rth(i,j)
   enddo
+
+  allocate(a(m,n), apsi(m,n))
+  allocate(b(m,n), bth(m,n))
+
+  a = jacobian * grad_psi_dot_grad_alpha
+  b = jacobian * grad_alpha_dot_grad_theta
+
+  do i = 1, m
+     !call spline3ders(xgrid, a(i,:), xgrid, dynew=apsi(i,:))
+     call one_dimensional_derivative(n, xgrid, a(i,:),  apsi(i,:))
+  enddo
+
+  do j = 1, n
+     !call spline3ders(zgrid, b(:,j), zgrid, dynew=bth(:,j))
+     call one_dimensional_derivative(m, zgrid, b(:,j), bth(:,j))
+  enddo
+  allocate(lapy(m,n))
+  lapy = (apsi + bth)/jacobian
+
   !if(myid==0 .and. (diagnosis .eqv. .true.)) call plot_alpha_r_z_mc()
   if(myid==0 .and. (diagnosis .eqv. .true.)) call verification2()
-  
+  if(myid==0) call diagnostic()
 contains
+
+  subroutine diagnostic()
+    open(newunit=u,file="grady.txt")
+    do i = 1, m
+       do j = 1, n
+          write(u,'(99(1pe14.5))')  r(i,j), z(i,j), tor_shift_mc(i,j), &
+               & grad_alpha(i,j), grad_psi_dot_grad_alpha(i,j), grad_alpha_dot_grad_theta(i,j), &
+               & lapy(i,j), zgrid(i), xgrid(j)
+       enddo
+       write(u,*)
+    enddo
+    close(u)
+  end subroutine diagnostic
+  
   ! subroutine plot_alpha_r_z_mc()
   !   use magnetic_coordinates,only: xgrid,zgrid
   !   use magnetic_field,only: minor_r_radcor, qfunc
@@ -4666,10 +4607,10 @@ contains
     integer:: u,i,j
     open(newunit=u,file='cross_product_comparision.txt')
 
-!    i=1
-!    i=m
+    !    i=1
+    !    i=m
 
- i=m-NINT(dtheta2/dtheta) !dtheta2 is the grid spacing for the perturbations and dtheta is the equilibrium grid spacing.
+    i=m-NINT(dtheta2/dtheta) !dtheta2 is the grid spacing for the perturbations and dtheta is the equilibrium grid spacing.
     do j=1,n
        ax=grad_psi_r(i,j)
        ay=0._p_
@@ -4685,13 +4626,13 @@ contains
 
        call cross_product_in_cartesian(ax,ay,az,cx,cy,cz,dx,dy,dz) !grad_psi_cross_grad_alpha
 
-        brval=br(r(i,j),z(i,j))
-        bzval=bz(r(i,j),z(i,j))
-        bphival=bphi(r(i,j),z(i,j))
+       brval=br(r(i,j),z(i,j))
+       bzval=bz(r(i,j),z(i,j))
+       bphival=bphi(r(i,j),z(i,j))
        write(u,*) dx,dy,dz, brval/GSpsi_prime,bphival/GSpsi_prime,bzval/GSpsi_prime
     enddo
 
-close(u)
+    close(u)
   end subroutine verification2
 end subroutine calculate_gradients_of_generalized_toroidal_angle
 
@@ -4745,7 +4686,7 @@ subroutine partial_derivative_in_mc(m,n,r,z,dtheta,dpsi,rpsi,rth,zpsi,zth,jacob)
 
   !calculate the Jacobian:
   do i=1,m
-!          do j=2,n !the jacobian at the magnetic axis is zero
+     !          do j=2,n !the jacobian at the magnetic axis is zero
      do j=1,n
         jacob(i,j)=r(i,j)*(rth(i,j)*zpsi(i,j)-rpsi(i,j)*zth(i,j))   !Jacobain of coordinate system (psi,theta,fai)
      enddo
@@ -4785,7 +4726,7 @@ subroutine partial_derivative_in_mc2(m,n,r,z,dtheta,dpsi,rpsi,rth,zpsi,zth,jacob
      enddo
      !jacob(i,1) = 2*jacob(i,2) - jacob(i,3)
   enddo
-  
+
 end subroutine partial_derivative_in_mc2
 
 
@@ -4883,6 +4824,23 @@ function jacobian_func(theta,radcor) result (z)
   real(p_)::radcor,theta,z
   call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,jacobian,theta,radcor,z)  !uniform 1darray is assumed
 end function jacobian_func
+module mapping_module ! From cylindrical coordinates to magnetic coordinates
+  use constants, only: p_
+  implicit none
+  save
+  integer, parameter :: nx_mapping = 50, nz_mapping = 50
+  real(p_) :: r_cyl(nx_mapping), z_cyl(nz_mapping)
+  real(p_) :: radcor(nx_mapping, nz_mapping)
+  real(p_) :: theta_a(nx_mapping, nz_mapping), theta_b(nx_mapping, nz_mapping)
+  real(p_) :: tor_shift_a(nx_mapping,nz_mapping), tor_shift_b(nx_mapping,nz_mapping)
+  real(p_) :: dr, dz
+  integer :: i0, j0 !index of the point at magnetic axis
+  real(p_) :: dtheta_dr(nx_mapping,nz_mapping), dtheta_dz(nx_mapping,nz_mapping)
+  real(p_) :: ddelta_dr_a(nx_mapping,nz_mapping), ddelta_dz_a(nx_mapping,nz_mapping)
+  real(p_) :: ddelta_dr_b(nx_mapping,nz_mapping), ddelta_dz_b(nx_mapping,nz_mapping)
+  real(p_) :: dradial_dr(nx_mapping,nz_mapping), dradial_dz(nx_mapping,nz_mapping)
+end module mapping_module
+
 subroutine mapping_table_for_cylindrical_to_magnetic_coordinates()
   !Prepare numerical tables radcor(R,Z), theta(R,Z), and tor_shift(R,Z).
   !Boris pusher works in cylindrical coordinates, so we need these pre-mapping data to interpolate the Boris orbit into magnetic coordinates.
@@ -6794,7 +6752,7 @@ contains
   pure real(p_) function gkdtdx_func(x, ns) result (z)
     real(p_), intent(in) :: x
     integer, intent(in) :: ns
-    real(p_), parameter :: dx = 2d-3
+    real(p_), parameter :: dx = 2d-4
     
     z = (temperature_object(ns)%func(x+dx) -temperature_object(ns)%func(x-dx))/(2*dx)
     
@@ -7033,9 +6991,9 @@ contains
     real(p_) :: vt, vmin, vmax, v_val, probability_max, maxwellian_max
     real(p_) :: theta_v(nm), phi_v(nm), theta_v0
     real(p_) :: vx(nm), vy(nm), vz(nm), tmp_array(3*nm), vx0,vy0,vz0, v0
-    real(p_) :: rp_e(nm), zp_e(nm), phip_e(nm) !particle locations
+    real(p_) :: rptcl(nm), zptcl(nm), phiptcl(nm) !particle locations
     real(p_) :: brval, bphival, vr, vphi, angle, bval,bxval,byval,bzval
-    real(p_) :: tor_shift_e,   normalizing_factor, t(mpol, 1:nrad), tmax
+    real(p_) :: tor_shift0,   normalizing_factor, t(mpol, 1:nrad), tmax
     real(p_) :: rg_e(nm), zg_e(nm), phig_e(nm), gaussian_envelope
 
     abs_jacobian_max = maxval(abs(jacobian(:,1:nrad)))
@@ -7104,22 +7062,21 @@ contains
        stop 'please specify a loading scheme for the spatial distribution of gk markers'
     end select
 
-    do i=1,nm !set toroidal coordinates of markers
-       rannum1=random_yj(0)
-       ygc(i) = toroidal_range*rannum1
+    do i = 1, nm !set toroidal coordinates of markers
+       ygc(i) = toroidal_range * random_yj(0)
     enddo
 
-    do i=1,nm
-       call linear_2d_interpolate(mpol, nrad, zgrid, xgrid,tor_shift_mc,zgc(i),xgc(i),tor_shift_e) 
-       phip_e(i) = ygc(i) + tor_shift_e
+    do i = 1, nm
+       call linear_2d_interpolate(mpol, nrad, zgrid, xgrid, tor_shift_mc, zgc(i), xgc(i), tor_shift0) 
+       phiptcl(i) = ygc(i) + tor_shift0
     enddo
 
     vt = sqrt(two*tgk0(ns)*kev/mass_gk(ns)) 
 
     select case(gk_velocity_loading_scheme(ns))
     case(1) !uniform in velocity using Cartesian coordinates (vx, vy, vz)
-       vmin = -3_p_*vt/vn_gk(ns) 
-       vmax = +3_p_*vt/vn_gk(ns)
+       vmin = -2.5_p_*vt/vn_gk(ns) 
+       vmax = +2.5_p_*vt/vn_gk(ns)
        do i = 1, 3*nm
           rannum1=random_yj(0) 
           tmp_array(i) = vmin + rannum1*(vmax-vmin) !scale the random number to [vmin:vmax]
@@ -7134,7 +7091,7 @@ contains
 
     case(2) !maxwellian in veloicty using spherical coordinates
        probability_max = probability_sphere(vt, ns)
-       vmax= 5.2_p_*vt/vn_gk(ns) !I found the range is important in enusuring the code does not blowup
+       vmax= 10.2_p_*vt/vn_gk(ns) !I found the range is important in enusuring the code does not blowup
        do i =1, nm !set velocity magnitude
           do j = 1, max_try !rejection method
              rannum1 = random_yj(0) 
@@ -7142,7 +7099,7 @@ contains
              pos1 = probability_sphere(v0*vn_gk(ns), ns)
              rannum2 = random_yj(0)
              pos2 = rannum2*probability_max
-             if(pos1>pos2) then !accept this smapling
+             if(pos1 > pos2) then !accept this smapling
                 v_gk(i) = v0
                 exit  !move to generating next sampling
              else  
@@ -7224,16 +7181,16 @@ contains
     !if(myid.eq.0) call calculate_possibility_density(vx,nm,100,vmin,vmax)
 
     do i=1,nm !computing parallel velocity and magnetic moment
-       bxval=br_mc_func(zgc(i),xgc(i))*cos(phip_e(i)) +bphi_mc_func(zgc(i),xgc(i))*(-sin(phip_e(i))) !x components in a constant Cartesian coor. system
-       byval=br_mc_func(zgc(i),xgc(i))*sin(phip_e(i)) +bphi_mc_func(zgc(i),xgc(i))*cos(phip_e(i)) !y components in a constant Cartesian coor. system
+       bxval=br_mc_func(zgc(i),xgc(i))*cos(phiptcl(i)) +bphi_mc_func(zgc(i),xgc(i))*(-sin(phiptcl(i))) !x components in a constant Cartesian coor. system
+       byval=br_mc_func(zgc(i),xgc(i))*sin(phiptcl(i)) +bphi_mc_func(zgc(i),xgc(i))*cos(phiptcl(i)) !y components in a constant Cartesian coor. system
        bzval=bz_mc_func(zgc(i),xgc(i)) !z components in a constant Cartesian coor. system
-       bval=sqrt(bxval**2+byval**2+bzval**2) 
-       vpar_gk(i)=(vx(i)*bxval+vy(i)*byval+vz(i)*bzval)/bval ! dot product
-       mu_gk(i)=(v_gk(i)**2-vpar_gk(i)**2)/(two*bval) !normalized magnetic moment
+       bval = sqrt(bxval**2+byval**2+bzval**2) 
+       vpar_gk(i) = (vx(i)*bxval+vy(i)*byval+vz(i)*bzval)/bval ! dot product
+       mu_gk(i) = (v_gk(i)**2-vpar_gk(i)**2)/(two*bval) !normalized magnetic moment
     enddo
 
     do i = 1, nm
-       call magnetic_coordinates_to_cylindrical_coordinates(zgc(i), xgc(i), rp_e(i), zp_e(i))
+       call magnetic_coordinates_to_cylindrical_coordinates(zgc(i), xgc(i), rptcl(i), zptcl(i))
     enddo
 
     do i = 1, nm
@@ -7243,13 +7200,12 @@ contains
        angle = atan2(vy(i),vx(i))
        vr = vx(i)*cos(angle)+ vy(i)*sin(angle)
        vphi = -vx(i)*sin(angle)+vy(i)*cos(angle)
-       call particle_to_guiding_center_location(ns, rp_e(i), phip_e(i), zp_e(i), vr,vphi,vz(i),brval,bphival,bzval, &
+       call particle_to_guiding_center_location(ns, rptcl(i), phiptcl(i), zptcl(i), vr,vphi,vz(i),brval,bphival,bzval, &
             & rg_e(i),phig_e(i), zg_e(i))
 
        xgc(i) = pfn_func(rg_e(i), zg_e(i)) !calculate the radial coordinate
-       call interpolate_from_cylindrical_to_magnetic_coordinates(rg_e(i), zg_e(i), zgc(i), tor_shift_e)
-       !ygc(i) = phig_e(i) + tor_shift_e ! a bug?
-       ygc(i) = phig_e(i) - tor_shift_e
+       call interpolate_from_cylindrical_to_magnetic_coordinates(rg_e(i), zg_e(i), zgc(i), tor_shift0)
+       ygc(i) = phig_e(i) - tor_shift0
     enddo
 
 
@@ -7320,7 +7276,7 @@ contains
 
   end subroutine load_gk
 
-  pure real(p_) function f0(x,v,ns) result (z) ! v in unit of vn, f0 in unit 1/(Ln**3*vn**3)
+  pure real(p_) function f0(x, v, ns) result (z) ! v in unit of vn, f0 in unit 1/(Ln**3*vn**3)
     use constants, only: p_, two, twopi, kev
     use normalizing, only: Ln
     use gk_module, only: mass_gk, vn_gk
@@ -7374,466 +7330,13 @@ contains
   end subroutine particle_to_guiding_center_location
 
 end module load_gk_mod
-subroutine field_lines_analyse()
-  use constants,only:p_
-  use constants,only: two
-  use radial_module,only: z_axis
-  implicit none
-  
-  integer:: n_tor_loop,max_npt_along_field_line,krad !used in field line tracing module
-!  namelist /field_line_tracing_nl/  n_tor_loop,max_npt_along_field_line,krad
-  real(p_),allocatable:: r_start(:),z_start(:),phi_start(:) !starting point of field lines
-  real(p_),allocatable:: r_poincare(:,:),z_poincare(:,:),phi_poincare(:,:) !pointcare points
-  integer:: j,k
-  integer,allocatable::nloop_actual(:)
-
-n_tor_loop=10
-max_npt_along_field_line=8000
-krad=1
-
-  
-!!$  open(31,file='input.nmlt')
-!!$  read(31,field_line_tracing_nl)
-!!$  close(31)
-!!$  write(*,field_line_tracing_nl)
-
-  allocate(r_start(krad))
-  allocate(z_start(krad))
-  allocate(phi_start(krad))
-  allocate(r_poincare(n_tor_loop+1,krad))
-  allocate(z_poincare(n_tor_loop+1,krad))
-  allocate(phi_poincare(n_tor_loop+1,krad))
-  allocate(nloop_actual(krad))
-
-!  !$omp parallel do
-  do k=1,krad
-     r_start(k)=2.15_p_+(k-1)*0.15d0/(20-1)
-     z_start(k)=z_axis
-     phi_start(k)=0._p_
-     call field_line_tracing(r_start(k),z_start(k),phi_start(k), max_npt_along_field_line,n_tor_loop,&
-          & r_Poincare(:,k),z_Poincare(:,k),phi_Poincare(:,k),nloop_actual(k))
-  enddo
-!  !$omp end parallel do
-
-  open(26,file='poincare.txt')
-  do k=1,krad
-     do j=1,nloop_actual(k)
-        write(26,*) r_Poincare(j,k),z_Poincare(j,k),phi_Poincare(j,k)
-     enddo
-     write(26,*)
-     write(26,*)
-  enddo
-  close(26)
-
-!!$  do k=1,krad
-!!$     call draw_magnetic_surface(r_start(k),z_start(k),'ref_field_line.txt') !draw the magnetic surface which passes through (r0,z0)
-!!$  enddo
-
-
-end subroutine field_lines_analyse
-
-
-
-subroutine field_line_tracing(r0,z0,phi0,npt,n_tor_loop,r_poincare,z_poincare,phi_poincare,nloop_actual)
-  !given coordinates (R,Z,phi), this subroutine follows the field lines passing through this point until it has finish n_tor_loop toroidal loop or exceeds the specifed maximum number of points along the field-line, npt. This subroutine also calculates the safety factor of the field-line found.
-  use constants,only:p_,two,twopi,one_half
-  use boundary,only: np_lcfs,x_lcfs,z_lcfs,nlim,rlim,zlim !use to check whether field line touch the boundary
- use magnetic_field, only : br,bz,bphi
- implicit none
-
-  real(p_),intent(in):: r0,z0,phi0
-  integer,intent(in)::npt,n_tor_loop
-  real(p_):: r(npt),z(npt),phi(npt)
-  real(p_),intent(out):: r_poincare(n_tor_loop+1),z_poincare(n_tor_loop+1),phi_poincare(n_tor_loop+1)
-  integer,intent(out):: nloop_actual
-  real(p_),parameter:: step=1d-3 !meter, trial of dr or dz step
-  real(p_):: brval,bzval,bphival,bpolval,dr,dz,dphi
-  
-  real(p_):: r_mid,z_mid,dl_pol,qval
-  logical:: loss
-  integer:: j,k,jj
-
-  k=1 !Poincare points
-  r_poincare(k)=r0 !Poincare points
-  z_poincare(k)=z0
-  phi_poincare(k)=phi0
-
-  r(1)=r0
-  z(1)=z0
-  phi(1)=phi0
-
-  loss=.false.
-  do j=1,npt-1
-     !2nd Runge-Kutta
-     brval=    br(r(j),z(j))
-     bzval=    bz(r(j),z(j))
-     bphival=bphi(r(j),z(j))
-     bpolval=sqrt(brval**2+bzval**2)
-
-     if(abs(bzval).lt.abs(brval)) then
-        dr=step*one_half
-        if(brval.lt.0._p_) dr=-step*one_half
-        dz=bzval/brval*dr
-     else
-        dz=step*one_half
-        if(bzval.lt.0._p_) dz=-step*one_half
-        dr=brval/bzval*dz
-     endif
-
-     dl_pol=sqrt(dr**2+dz**2)
-     dphi=bphival/bpolval*dl_pol/r(j)
-
-     !first step:
-     r_mid=r(j)+dr
-     z_mid=z(j)+dz
-     brval=    br(r_mid,z_mid)
-     bzval=    bz(r_mid,z_mid)
-     bphival=bphi(r_mid,z_mid)
-     bpolval=sqrt(brval**2+bzval**2)
-
-
-     if(abs(bzval).lt.abs(brval)) then
-        dr=step
-        if(brval.lt.0._p_) dr=-step
-        dz=bzval/brval*dr
-     else
-        dz=step
-        if(bzval.lt.0._p_) dz=-step
-        dr=brval/bzval*dz
-     endif
-
-     dl_pol=sqrt(dr**2+dz**2)
-     dphi=bphival/(bpolval*r_mid)*dl_pol
-
-     r(j+1)=r(j)+dr
-     z(j+1)=z(j)+dz
-     phi(j+1)=phi(j)+dphi
-
-     call  check_whether_field_line_touch_boundary(r(j+1),z(j+1),phi(j+1),x_lcfs,z_lcfs,np_lcfs,loss)
-     if (loss.eqv. .true.) exit
-
-     if(abs(floor(abs(phi(j)-phi0)/twopi)-floor(abs(phi(j+1)-phi0)/twopi)).eq.1) then ! finish one toroidal turn
-        !   write(*,*) 'j=',j,'k=',k, phi(j),phi(j+1)
-        k=k+1
-        r_poincare(k)=(r(j)+r(j+1))/two
-        z_poincare(k)=(z(j)+z(j+1))/two
-        phi_poincare(k)=((phi(j)+phi(j+1))/two)/twopi
-     endif
-
-     if(abs(phi0-phi(j+1))/twopi.ge.n_tor_loop) exit
-
-  enddo
-
- if(j.eq.npt) then
-     open(76,file='bad_line.txt')
-     do jj=1,j-1
-     write(76,*) r(jj),z(jj),phi(jj)
-     enddo
-     close(76)
-     call safety_factor_a_field_line(r,z,phi,j,qval)
-     call draw_magnetic_surface(r0,z0,'ref_field_line.txt') !draw the magnetic surface which passes through (r0,z0)
-     stop 'max number of tracing steps of field line is exceeded before achiving the specified number of toroidal loop'
-endif
-
-  nloop_actual=k
-  write(*,*) 'nloop_actual=',nloop_actual, 'actual step along field line=',j
-
-  call safety_factor_a_field_line(r,z,phi,j+1,qval)
-
-!!$  open(76,file='field_line.txt')
-!!$  do jj=1,j+1
-!!$     write(76,*) r(jj),z(jj),phi(jj)
-!!$  enddo
-!!$  close(76)
-
-
-!call check_field_line_in_field_aligned_coordinates(r,z,phi,j,qval)
-
-end subroutine field_line_tracing
-
-
-subroutine field_line_tracing_simplified(r0,z0,phi0) !see the comments in subroutine "field_line_tracing"
-  use constants,only:p_,two,twopi,one_half
-use magnetic_field, only :  br,bz,bphi
-  implicit none
-  real(p_),intent(in):: r0,z0,phi0
-  integer,parameter::npt=3000
-  real(p_):: r(npt),z(npt),phi(npt)
-  real(p_),parameter:: step=1d-3 !meter, trial of dr or dz step
-  real(p_):: brval,bzval,bphival,bpolval,dr,dz,dphi
-  real(p_):: r_mid,z_mid,dl_pol,qval
-  integer:: j,u
-
-  r(1)=r0
-  z(1)=z0
-  phi(1)=phi0
-
-  do j=1,npt-1 !2nd Runge-Kutta
-     brval=    br(r(j),z(j))
-     bzval=    bz(r(j),z(j))
-     bphival=bphi(r(j),z(j))
-     bpolval=sqrt(brval**2+bzval**2)
-
-     if(abs(bzval).lt.abs(brval)) then
-        dr=step*one_half
-        if(brval.lt.0._p_) dr=-step*one_half
-        dz=bzval/brval*dr
-     else
-        dz=step*one_half
-        if(bzval.lt.0._p_) dz=-step*one_half
-        dr=brval/bzval*dz
-     endif
-
-     dl_pol=sqrt(dr**2+dz**2)
-     dphi=bphival/bpolval*dl_pol/r(j)
-
-     !first step of 2nd Runge-Kutta:
-     r_mid=r(j)+dr
-     z_mid=z(j)+dz
-     brval=    br(r_mid,z_mid)
-     bzval=    bz(r_mid,z_mid)
-     bphival=bphi(r_mid,z_mid)
-     bpolval=sqrt(brval**2+bzval**2)
-
-     if(abs(bzval).lt.abs(brval)) then
-        dr=step
-        if(brval.lt.0._p_) dr=-step
-        dz=bzval/brval*dr
-     else
-        dz=step
-        if(bzval.lt.0._p_) dz=-step
-        dr=brval/bzval*dz
-     endif
-
-     dl_pol=sqrt(dr**2+dz**2)
-     dphi=bphival/(bpolval*r_mid)*dl_pol
-
-     r(j+1)=r(j)+dr
-     z(j+1)=z(j)+dz
-     phi(j+1)=phi(j)+dphi
-
-  enddo
-
-  open(newunit=u,file='field_line')
-  do j=1,npt
-     write(u,*) phi(j),z(j),r(j)
-  enddo
-  close(u)
-end subroutine field_line_tracing_simplified
-
-
-subroutine field_line_tracing0(r0,z0,phi0, npt, dphi, r,z,phi)
-  use constants,only : p_, two, twopi, one_half
-  use magnetic_field, only :  br, bz, bphi
-  implicit none
-  real(p_),intent(in) :: r0,z0,phi0
-  real(p_),intent(in) :: dphi
-  integer, intent(in) :: npt
-  real(p_), intent(out) :: r(npt),z(npt),phi(npt)
-  real(p_) :: brval,bzval,bphival
-  real(p_) :: dr, dz, r_mid, z_mid
-  integer :: j
-
-  r(1)=r0
-  z(1)=z0
-  phi(1)=phi0
-
-  do j=1,npt-1 !2nd Runge-Kutta
-     brval=    br(r(j),z(j))
-     bzval=    bz(r(j),z(j))
-     bphival=bphi(r(j),z(j))
-
-     dr= brval/bphival*(r(j)*dphi)
-     dz= bzval/bphival*(r(j)*dphi)
-
-     r_mid=r(j)+dr*one_half !first step of 2nd Runge-Kutta
-     z_mid=z(j)+dz*one_half
-     brval=    br(r_mid,z_mid)
-     bzval=    bz(r_mid,z_mid)
-     bphival=bphi(r_mid,z_mid)
-
-     dr= brval/bphival*(r_mid*dphi)
-     dz= bzval/bphival*(r_mid*dphi)
-    
-     r(j+1)=r(j)+dr !second step of 2nd Runge-Kutta
-     z(j+1)=z(j)+dz
-     phi(j+1)=phi(j)+dphi
-  enddo
-end subroutine field_line_tracing0
-
-subroutine check_field_line_in_field_aligned_coordinates(r,z,phi,npt,qval)
-  use constants,only:p_
-  use constants,only: two,twopi
-  use radial_module,only:z_axis
-  use mapping_module,only: nx_mapping ,j0,r_cyl,tor_shift_b
-  use map_to_mc, only : interpolate_from_cylindrical_to_magnetic_coordinates
-  use magnetic_field, only : psi_func, pfn_func, radcor_as_func_of_pfn
-  implicit none
-  integer,intent(in):: npt
-  real(p_),intent(in):: r(npt),z(npt),phi(npt),qval
-  real(p_):: radcor(npt),theta(npt),alpha(npt),tor_shift(npt)
-  real(p_)::x1,x2,y1,y2,z1,z2,dx,dy,dz,dl(npt)
-  real(p_):: sum=0._p_,real_shift,total_shift,tmp_array(nx_mapping)
-  integer:: j,kk
-
-
-
-  do j=1,npt
-     radcor(j)=radcor_as_func_of_pfn(pfn_func(r(j),z(j))) !get radial coordinate
-     call interpolate_from_cylindrical_to_magnetic_coordinates(r(j),z(j),theta(j),tor_shift(j))
-  enddo
-
-  dl(1)=0._p_
-  do j=2,npt
-     x1=r(j-1)*cos(phi(j-1))
-     x2=r(j)*cos(phi(j))
-     y1=r(j-1)*sin(phi(j-1))
-     y2=r(j)*sin(phi(j))
-     z1=z(j-1)
-     z2=z(j)
-     dx=x2-x1
-     dy=y2-y1
-     dz=z2-z1
-     dl(j)=dl(j-1)+sqrt(dx*dx+dy*dy+dz*dz)
-  enddo
-
-  open(11,file='field_line_in_field_aligned_co.txt')
-  do j=2,npt
-
-!!$     if(abs(theta(j)-theta(j-1)) .ge. twopi*0.9) then !indecate finishing one poloidal loop
-!!$        !total_shift=tor_shift(j)*(z_axis-z(j-1))/(z(j)-z_axis)+tor_shift(j-1)
-!!$        !total_shift=qval*twopi*1.0004
-!!$        !total_shift=2.35227*twopi
-!!$        do kk=1,nx_mapping
-!!$           tmp_array(kk)= tor_shift_b(kk,j0)
-!!$        enddo
-!!$        call linear_1d_interpolate(nx_mapping,r_cyl,tmp_array,r(j),total_shift)
-!!$        sum=sum+total_shift
-!!$     endif
-!!$     alpha(j)=phi(j)-(tor_shift(j)+sum)
-   call accumulate_tor_shift(theta(j-1),theta(j),r(j),tor_shift(j),real_shift)
-    alpha(j)=phi(j)-real_shift 
-     write(11,*) dl(j),radcor(j),theta(j),alpha(j), tor_shift(j), phi(j),r(j),z(j)
-  enddo
-  close(11)
-end subroutine check_field_line_in_field_aligned_coordinates
-
-
-subroutine safety_factor_a_field_line(r,z,phi,npt,qval)
-  !given a field line, calculate its safety factor
-  use constants, only: p_, two, twopi
-  use magnetic_field, only : psi_func
-  use magnetic_field, only : qfunc0
-  implicit none
-  integer, intent(in) :: npt
-  real(p_), intent(in) :: r(npt), z(npt), phi(npt)
-  real(p_), intent(out) :: qval
-  real(p_) :: phi_old
-  integer :: j, npass
-
-  npass = 0
-  do j=1,npt-1
-     if(z(j)*z(j+1).lt.0) then !indicates one midplane-crossing
-        npass = npass+1
-        if(npass == 1) phi_old=(phi(j)+phi(j+1))/two
-     endif
-     if(npass == 3) then !indicates that the line has finished one poloidal period
-        qval=abs(phi_old-phi(j))/twopi
-        write(*,*) 'safety factor of field line passing (r,z)',r(1),z(1),'is', qval,&
-             & 'q value specified in gfile =', qfunc0(psi_func(r(1),z(1)))
-        exit
-     endif
-  enddo
-
-  write(*,*) 'toroidal loops the field line travels=',(phi(npt)-phi(1))/twopi
-
-end subroutine safety_factor_a_field_line
-
-
-subroutine check_whether_field_line_touch_boundary(r,z,phi,rlim,zlim,nlim,loss)
-  use constants,only:p_
-  use math, only : pnpoly
-!  use boundary,only: nlim,rlim,zlim 
-  implicit none
-  real(p_),intent(in):: r,z,phi
-  integer,intent(in):: nlim
-  real(p_),intent(out):: rlim(nlim),zlim(nlim)
-  logical,intent(out):: loss
-  integer:: inout
-
-  call PNPOLY(r,z,rlim,zlim,nlim,INOUT) !find out wheter the point (r,z) is within the limiter
-  !        if (inout.eq.1) then !within the LCFS
-  if (inout.eq.-1 .or.inout.eq.0) then !the particle is out of the limiter
-     write(*,*) '==>This field line touches the limiter at (R,Z,phi)=', r,z,phi
-     loss=.true.
-     !stop
-  else
-     loss=.false.
-  endif
-
-end subroutine
-
-
-  subroutine accumulate_tor_shift(theta_old,theta_new,r,tor_shift,real_shift) !,kt)
-    use constants,only:p_
-    use constants,only: twopi
-    use mapping_module,only: nx_mapping,tor_shift_b,j0,r_cyl
-  use interpolate_module,only: linear_1d_interpolate
-    implicit none
-    real(p_),intent(in):: theta_old,theta_new,r,tor_shift
-    real(p_),intent(out)::real_shift
-    real(p_),save::sum=0._p_
-    real(p_):: tmp_array(nx_mapping),twopi_q
-!integer,intent(in):: kt
-    integer::kk
-    if(abs(theta_old-theta_new) .ge. twopi*0.9) then !indicate finishing one poloidal loop
-       do kk=1,nx_mapping
-          tmp_array(kk)= tor_shift_b(kk,j0)
-       enddo
-       call linear_1d_interpolate(nx_mapping,r_cyl,tmp_array,r,twopi_q) !the result is twopi*q, I use this instead of directly using twopi*q because the latter may cause some cancellation problem
-       sum=sum+twopi_q*sign(1._p_,theta_old-theta_new)
-!write(*,*) 'sum=',sum, 'twopi_q=',twopi_q,'tor_shift=',tor_shift,'sum+tor_shift/ real_shift',sum+tor_shift, 'kt=',kt
-    endif
-
-    real_shift=sum+tor_shift
-
-
-    !real_shift=sum-(twopi_q-tor_shift)
-  end subroutine accumulate_tor_shift
-
-
-  subroutine draw_magnetic_surface(r0,z0,filename) !draw the magnetic surface which passes through (r0,z0)
-  use constants,only:p_
-  use constants,only:zero,one,two,twopi
-  use boundary,only:np_lcfs,x_lcfs,z_lcfs
-  use radial_module,only: r_axis,z_axis
-  use contour_mod,only : find_contour
-  use magnetic_field, only : psi_func
-  implicit none
-
-  real(p_),intent(in):: r0,z0
-  character(*),intent(in)::  filename
-  real(p_):: psival
-  real(p_):: x_contour(np_lcfs),z_contour(np_lcfs)
-  integer:: i,u
-  
-  psival=psi_func(r0,z0)
-
-  call find_contour(psival,x_contour,z_contour)
-
-  open(newunit=u,file=filename)
-  do i=1,np_lcfs
-     write(u,*) x_contour(i),z_contour(i)
-  enddo
-  close(u)
-end subroutine draw_magnetic_surface
 module deposit_gk_module
 contains
   
   subroutine deposit_gk(ns, lost, vpar_gk, w_gk, x_ring, y_ring, z_ring, &
        & density_left, density_right, jpar_left, jpar_right)
     !with markers' (v,x,w) given, do the deposition to get density and jpar on grids
-    use constants, only: p_, one
+    use constants, only: p_, zero, one
     use magnetic_coordinates, only: n=>nrad,m=>mtor, xgrid, ygrid, dtor, dradcor, xlow, xupp
     use domain_decomposition, only: dtheta2, theta_start
     use gk_module, only: nm_gk, gk_flr, gyro_npt, charge_gk, vn_gk
@@ -7869,8 +7372,10 @@ contains
           cx1= (x_ring(kr,k)-xgrid(j))/dradcor
           cx2=one-cx1
 
-          cz1=(z_ring(kr,k)-theta_start)/dtheta2
-          cz2=one-cz1
+          cz1 = (z_ring(kr,k) - theta_start)/dtheta2
+          !cz1 = max(cz1, zero) ! z of gyro-ring can exceed the z cell, so we need to truncate it.
+          !cz1 = min(cz1, one)
+          cz2 = one - cz1
 
           i_plus1=i+1
           if(i.eq.m) i_plus1=1 !periodic condition
@@ -7995,32 +7500,34 @@ contains
   end subroutine deposit_fk
 end module deposit_fk_module
 module communication_connection
-  !communicate field value between neighbour cells, and handle the connecting condition across the theta cut
-  use constants, only: p_
+  ! Communicate field value between neighbour theta cells, and handle the connecting condition across the theta cut
+  use constants, only: p_, twopi
   implicit none
 contains
 
   subroutine connect_condition_across_theta_cut(u, direction)
     use interpolate_module, only: linear_1d_interpolate
-    use magnetic_coordinates, only: ygrid, tor_shift_mc, mpol, toroidal_range
+    use magnetic_coordinates, only: ygrid, toroidal_range !tor_shift_mc, mpol
+    use radial_module, only: qrad
     use math, only: shift_toroidal
     real(p_), intent(inout) :: u(:,:)
     integer, intent(in) :: direction ! alowable values: +1 or -1
-    !If direction == +1, then follow magnetic field line along the positive direction of theta
-    !If direction==-1, then follow magnetic field line along the negative direction of theta
+    !If direction == +1, follow magnetic field line along the positive direction of theta
+    !If direction == -1, follow magnetic field line along the negative direction of theta
     real(p_), allocatable :: u_old(:)
     real(p_) :: y0, twopiq
     integer :: i, j, m, n
 
-    m = size(u,1) !toroidal
-    n = size(u,2) !radial
+    m = size(u,1) ! toroidal
+    n = size(u,2) ! radial
     allocate(u_old(m+1))
 
     do j = 1, n !radial
-       u_old(1:m) = u(:,j)
-       u_old(m+1) = u(1,j) ! toroidal periodic condition
+       u_old(1:m) = u(:, j)
+       u_old(m+1) = u(1, j) ! toroidal periodic condition
 
-       twopiq = tor_shift_mc(mpol,j) - tor_shift_mc(1,j)
+       !twopiq = tor_shift_mc(mpol,j) - tor_shift_mc(1,j)
+       twopiq = twopi*qrad(j)
        do i = 1, m
           y0 = ygrid(i) + twopiq*direction
           call shift_toroidal(y0, toroidal_range) 
@@ -8046,17 +7553,17 @@ contains
     call MPI_Sendrecv(jpar_right, m*n, MPI_real8, my_right, 3, &
          &            jpar_left0, m*n, MPI_real8, my_left,  3, Tube_comm, status, ierr)
 
-    if(GCLR==0) call connect_condition_across_theta_cut(jpar_left0, direction=-1) 
+    if(GCLR==0) call connect_condition_across_theta_cut(jpar_left0, -1) 
     jpar(:,:) = jpar_left(:,:) + jpar_left0(:,:) !add the contribution from the neighbour cell
 
   end subroutine merge_source
 
   subroutine update_scalar_at_right_boundary(s) 
-    !Every proc is response for one cell which has two boundary grids.
-    !Only the field on left-boundary-grid is computed by the present proc.
-    !The field on the right-boundary is received from the neighbour proc. This subroutine handle this communication and the edge case for gclr=mpol2-1
+    !Every proc is response for one cell which has two boundaries.
+    !Only the field on left-boundary is computed by the present proc.
+    !The field on the right-boundary is received from the neighbour proc. This subroutine handle this communication and the edge case for gclr = mpol2-1
     !Note that the definition of cell here is different from the the definition of cell in PIC.
-    !The grids are the centers of the cells defined in PIC while the grids are the boundaries of the cells mentioned here.
+    !In PIC,the grids are the centers of the cells while here the grids are the boundaries of the cells
     use mpi
     use domain_decomposition, only: myid, GCLR, Tube_comm, my_left, my_right
     use magnetic_coordinates, only : mpol2
@@ -8068,16 +7575,17 @@ contains
     call MPI_Sendrecv(s(:,:,1),  m*n,  MPI_real8, my_left,  41, &
          &            s(:,:,2),  m*n,  MPI_real8, my_right, 41, Tube_COMM, status, ierr)
     !special treatment at theta cut, to handle the phi-grid mismatch
-    if(GCLR==mpol2-1) call connect_condition_across_theta_cut(s(:,:,2), direction=1)
+    if(GCLR == mpol2-1) call connect_condition_across_theta_cut(s(:,:,2), 1)
 
   end subroutine update_scalar_at_right_boundary
 
 
   subroutine update_derivatives_at_right_boundary(ax, ay, az)
-    !communication between neighbour cells: Every proc is response for one cell which has two boundary grids.
-    !Only the field on left-boundary-grid is computed by the present proc.
-    !So the value on the right boundary is obtained by communicating with neighbour process.
-    !field value at right-boundary of the present cell is needed when pushing particle weights
+    ! Communication between neighbour cells.
+    ! Every proc is response for one z cell, which has two boundaries.
+    ! Only the field on left-boundary is computed by the present proc.
+    ! The value on the right boundary is obtained by communicating with neighbour process.
+    ! (Field value at right-boundary of the present cell is needed when pushing particle weights)
     use mpi
     use magnetic_coordinates, only: m=>mtor, n=>nrad, mpol2
     use domain_decomposition, only: myid, GCLR, Tube_comm, ntube, my_left, my_right
@@ -8104,7 +7612,7 @@ contains
 
   subroutine derivative_transform_at_theta_cut(ax, ay)
     !Transform the components of gradient of a scalar field from theta=-pi to theta=pi
-    !The basis vectors grad_alpha, in terms of which the gradient of apara/potential are decomposed, is discontinuous across the theta-cut. Therefore the components at one side need to be transformed to the components on the other side
+    !The basis vectors grad_alpha, in terms of which the gradients of phi and apara are decomposed, is discontinuous across the theta-cut. Therefore the components at one side need to be transformed to the components on the other side
     use magnetic_coordinates, only: mpol, nrad, grad_psi, grad_psi_dot_grad_alpha, &
          & grad_psi_r, grad_psi_z, grad_alpha_r, grad_alpha_z
     real(p_), intent(in) :: ay(:,:)
@@ -8202,7 +7710,6 @@ contains
     endif
 
   end subroutine get_nearby_field_along_field_line
-
   
 end module communication_connection
 module filter_module
@@ -8211,7 +7718,7 @@ module filter_module
 contains
 
   subroutine surface_average_of_n0(s, nx)
-    ! retain only the magnetic surface average of n=0 harmonic (other poloidal harmonics are filtered out)
+    ! Retain only the magnetic surface average of n=0 harmonic
     use constants, only: p_, twopi
     use magnetic_coordinates, only: nrad, nz => mpol2, jacobian_av, abs_jacobian
     use domain_decomposition, only: tube_comm, ipol_eq, dtheta2
@@ -8297,109 +7804,76 @@ contains
     s(:) = sx(:) !store the result in the complex array.
   end subroutine mfilter_for_n0
 
-  subroutine mfilter_for_each_n(s, nx, ntor)
+  subroutine mfilter_for_each_n(s, nx, kn)
     use constants, only: p_, ii, twopi, pi
-    use magnetic_coordinates, only: nrad, nz => mpol2
+    use magnetic_coordinates, only: nsegment, nrad, nz => mpol2
     use radial_module, only: qrad
     use domain_decomposition, only: tclr, gclr, ntube, grid_comm, tube_comm, theta_start
     use mpi
     implicit none
-    integer, intent(in) :: nx, ntor !radial, toroidal_harmonic
+    integer, intent(in) :: nx, kn !radial, toroidal_harmonic
     complex(p_), intent(inout) :: s(nx)
-    integer, parameter :: mupp = 5 !poloidal harmonics m in [-mupp:mupp], bais funtions: exp(ii*m*theta)
+    integer, parameter :: mupp = 5 
     complex(p_) :: coef(-mupp:mupp)
     logical, save :: is_first = .true.
-    integer, save :: my_start, my_end, spacing, my_range
+    integer, save :: my_start, my_end, span, my_range
     integer, allocatable, save :: recvcounts(:), displacement(:)
     complex(p_), allocatable, save :: wexp1(:,:,:), wexp2(:,:)
     complex(p_), allocatable :: my_sz(:), sz(:,:), my_filtered(:), filtered(:)
-    integer :: i, j, k, ierr
+    integer :: i, j, km, ierr, nq0
+    real(p_) :: th
 
-    if (is_first .eqv. .true.) then !needs to be genreated only for the first time
+    if (is_first .eqv. .true.) then !do this only the first time of entering this subroutine
        is_first = .false.
-       spacing = nx/ntube
-       my_start = TCLR*spacing + 1
-       my_end = my_start + (spacing-1)
+       span = nx/ntube   ! radial decomposition
+       my_start = TCLR*span + 1
+       my_end = my_start + (span-1)
        if(TCLR == ntube-1) my_end = nx !last process handles all the remainder if nx is not a perfect multiple of ntube
        my_range = my_end - my_start + 1
        allocate(recvcounts(0:ntube-1))
        allocate(displacement(0:ntube-1))
-       recvcounts(:) = spacing
-       recvcounts(ntube-1) = recvcounts(ntube-1)+(nx-spacing*ntube) !last process contains additional elements
+       recvcounts(:) = span
+       recvcounts(ntube-1) = recvcounts(ntube-1) + (nx-span*ntube) !last process contains additional elements
        do i = 0, ntube-1
-          displacement(i) = i * spacing
+          displacement(i) = i * span
        enddo
        allocate(wexp1(0:nz-1, -mupp:mupp, my_start:my_end))
        allocate(wexp2(-mupp:mupp, my_start:my_end))
-       do k = -mupp, mupp
-          do i = 0, nz-1
-             wexp1(i, k, :) = exp(-ii*(k-nint(ntor*qrad(my_start+1:my_end+1)))*(-pi+i*twopi/nz))
+
+       do j = my_start, my_end
+          nq0 = nint(nsegment*kn*qrad(j+1))
+          do km = -mupp, mupp
+
+             do i = 0, nz-1
+                th = -pi + i*twopi/nz
+                wexp1(i, km, j) = exp(-ii*(km - nq0)*th)
+             enddo
+
+             th = -pi + gclr*twopi/nz
+             wexp2(km, j) = exp(+ii*(km - nq0)*th)
+
           enddo
-          wexp2(k, :) = exp(+ii*(k-nint(ntor*qrad(my_start+1:my_end+1)))*(-pi+gclr*twopi/nz))
        enddo
     endif
 
     allocate(my_sz(my_start:my_end))
     allocate(sz(my_start:my_end, 0:nz-1))
-    my_sz(:) = s(my_start:my_end) /exp(ii*ntor*qrad(my_start+1:my_end+1)*(theta_start+pi))
+    my_sz(:) = s(my_start:my_end) / exp(ii*nsegment*kn*qrad(my_start+1:my_end+1)*(theta_start+pi))
     call mpi_allgather(my_sz(:), my_range, MPI_complex16, sz, my_range, MPI_complex16, tube_comm, ierr)
 
     allocate(my_filtered(my_start:my_end))
     allocate(filtered(nx))
     do j = my_start, my_end
-       do k = -mupp, mupp
-          coef(k) = sum(sz(j,:)*wexp1(:,k, j))/nz ! Fourier expansion coefficient
+       do km = -mupp, mupp
+          coef(km) = sum(sz(j,:)*wexp1(:,km, j))/nz ! Fourier expansion coefficient
        enddo
        my_filtered(j) = sum(coef(:)*wexp2(:,j))  ! Reconstruction (i.e., Inverse Fourier Transform)
     enddo
     call mpi_allgatherv(my_filtered, my_range, MPI_complex16, &
          &     filtered, recvcounts, displacement, MPI_complex16, grid_comm, ierr)
 
-    s(:) = filtered(:) *exp(ii*ntor*qrad(2:nrad-1)*(theta_start+pi))
-  end subroutine 
-
-
-  subroutine mfilter_for_each_n_tmp(s, nx, ntor) !without raidal parallization, gving the same result as the above
-    use constants, only: p_, ii, twopi, pi
-    use magnetic_coordinates, only: nrad, nz => mpol2
-    use radial_module, only: qrad
-    use domain_decomposition, only: gclr, tube_comm, theta_start
-    use mpi
-    implicit none
-    integer, intent(in) :: nx, ntor !radial, toroidal_harmonic
-    complex(p_), intent(inout) :: s(nx)
-    integer, parameter :: mupp = 5 !poloidal harmonics m in [-mupp:mupp], bais funtions: exp(ii*m*theta)
-    logical, save :: is_first = .true.
-    complex(p_), allocatable, save :: wexp1(:,:), wexp2(:)
-    complex(p_) :: coef(-mupp:mupp,nx)
-    complex(p_) :: my_sz(nx), sz(nx, 0:nz-1), sx(nx)
-    integer :: i, j, k, ierr
-
-    if (is_first .eqv. .true.) then !needs to be genreated only for the first time
-       is_first = .false.
-       allocate(wexp1(0:nz-1, -mupp:mupp))
-       allocate(wexp2(-mupp:mupp))
-       do k = -mupp, mupp
-          do i = 0, nz-1
-             wexp1(i,k) = exp(-ii*k*(-pi+i*twopi/nz))
-          enddo
-          wexp2(k) = exp(+ii*k*(-pi+gclr*twopi/nz))
-       enddo
-    endif
-
-    my_sz(:) = s(:)/exp(ii*ntor*qrad(2:nrad-1)*(theta_start+pi))
-    call mpi_allgather(my_sz(:), nx, MPI_complex16, sz, nx, MPI_complex16, tube_comm, ierr)
-
-    do j = 1, nx
-       do k = -mupp, mupp
-          coef(k,j) = sum(sz(j,:)*wexp1(:,k)) ! Fourier expansion coefficient
-       enddo
-       sx(j) = sum(coef(:,j)*wexp2(:))/nz  ! Inverse Fourier Transform
-    enddo
-
-    s(:) = sx(:) *exp(ii*ntor*qrad(2:nrad-1)*(theta_start+pi))
-  end subroutine 
-
+    s(:) = filtered(:) * exp(ii*nsegment*kn*qrad(2:nrad-1)*(theta_start+pi))
+  end subroutine mfilter_for_each_n
 
 
   subroutine toroidal_filter(field,m,n)
@@ -8791,7 +8265,7 @@ subroutine x_derivative0(field, field_x)
          &            a_left,   m*n, MPI_real8, my_left,  1, Tube_COMM, status, ierr)
 
     if(GCLR == 0) call connect_condition_across_theta_cut(a_left, -1)
-    a_theta(:,:) = (a(:,:,2) - a_left(:,:))/(two*dtheta2) !centered difference
+    a_theta(:,:) = (a(:,:,2) - a_left(:,:))/(two*dtheta2) ! centered finite difference
   end subroutine z_derivative
 
   subroutine z_derivative0(a, a_theta) ! calculating derivative along a magnetic field line
@@ -8804,8 +8278,338 @@ subroutine x_derivative0(field, field_x)
   end subroutine z_derivative0
 
 end module derivatives_in_xyz
+module gyro_ring_mod
+  use constants, only : p_, two, twopi
+  
+  real(p_), allocatable :: cos_gyro(:,:), sin_gyro(:,:)
+
+contains
+  subroutine set_gyro_phase()
+    use domain_decomposition, only: myid
+    use gk_module, only: gyro_npt, nmmax
+    use math, only: random_yj
+    implicit none
+    integer :: i, j, iseed
+    real(p_) :: gyro_angle0, gyro_angle, tmp
+
+    allocate(cos_gyro(gyro_npt,nmmax))
+    allocate(sin_gyro(gyro_npt,nmmax))
+
+    iseed = -(1177+myid*3123) !set the iseed in different procs
+    tmp = random_yj(iseed) !just to trigger the use of the iseed, the generated random number is not used, 
+    do i=1, nmmax
+       gyro_angle0 = random_yj(0)*twopi !0 means using last random number as iseed, first gyro-angle
+       !gyro_angle0=0 !comment in/out this if we do-not/do want the first gyro-angle to be random
+       do j = 1, gyro_npt ! gyro-angles are uniform distributed relatively to the first one.
+          gyro_angle =  gyro_angle0 + twopi/gyro_npt*(j-1)
+          cos_gyro(j,i) = cos(gyro_angle)
+          sin_gyro(j,i) = sin(gyro_angle)
+       enddo
+    enddo
+  end subroutine set_gyro_phase
+
+  subroutine gyro_ring(ns, lost, radcor, alpha, theta, mu, x_ring, y_ring, z_ring)
+    !output are used by gyro_average and deposit_gk
+    use gk_module, only:  gk_flr, nm_gk
+    use magnetic_coordinates, only: xlow, xupp
+    implicit none
+    integer, intent(in) :: ns
+    logical, intent(in) :: lost(:)
+    real(p_), intent(in) :: theta(:), radcor(:), alpha(:), mu(:)
+    real(p_), intent(out) :: x_ring(:, :), y_ring(:, :), z_ring(:, :)
+    integer :: nm, k
+
+    nm= nm_gk(ns)
+
+    if(gk_flr(ns) .eqv. .false.) then
+       do k = 1, nm
+          if (lost(k) .eqv. .true.) cycle
+          x_ring(1,k) = radcor(k)
+          y_ring(1,k) = alpha(k)
+          z_ring(1,k) = theta(k)
+       enddo
+    else
+       do k =1, nm
+          if (lost(k) .eqv. .true.) cycle
+          call gyro_ring_core(ns, k, radcor(k), alpha(k), theta(k), mu(k), x_ring(:,k), y_ring(:,k), z_ring(:,k))
+       enddo
+    endif
+  end subroutine gyro_ring
+
+
+pure subroutine gyro_ring_core(ns, k, x0, y0, z0, mu, x, y, z)
+    use magnetic_coordinates, only: mpol, nrad, zgrid, xgrid, dtheta, dradcor, &
+         & grad_psi, grad_alpha, grad_psi_dot_grad_alpha, grad_psi_dot_grad_theta, &
+         & pfn_inner, pfn_bdry, toroidal_range, GSpsi_prime
+    use table_in_mc, only : bdgxcgz, b_mc
+    use math,only: shift_toroidal
+    use gk_module, only:   mass_gk, charge_gk, vn_gk, gyro_npt
+    use domain_decomposition, only: theta_start, dtheta2
+    use math, only: shift_toroidal
+    use interpolate_module, only : linear_2d_interpolate0, locate
+    implicit none
+    integer, intent(in) :: ns, k
+    real(p_), intent(in) :: x0, y0, z0, mu
+    real(p_), intent(out) :: x(:), y(:), z(:)
+    real(p_) :: bval0, gx0, gxdgy0, gxdgz0, bdgxcgz0
+    real(p_) :: vper, gyro_radius, dy1, dy2, dz1, dz2
+    integer :: i, j, kp
+
+    call locate(mpol, zgrid, dtheta, z0, i)
+    call locate(nrad, xgrid, dradcor,x0, j)
+    call linear_2d_interpolate0(mpol,nrad,zgrid,xgrid,dtheta, dradcor, grad_psi, &
+         & z0, x0,i,j, gx0)
+    call linear_2d_interpolate0(mpol,nrad,zgrid,xgrid,dtheta, dradcor, grad_psi_dot_grad_alpha, &
+         & z0, x0,i,j,gxdgy0)
+    call linear_2d_interpolate0(mpol,nrad,zgrid,xgrid,dtheta, dradcor, grad_psi_dot_grad_theta, &
+         & z0, x0,i,j, gxdgz0)
+    call linear_2d_interpolate0(mpol, nrad, zgrid, xgrid, dtheta, dradcor, bdgxcgz, &
+         & z0, x0,i,j, bdgxcgz0)
+    call linear_2d_interpolate0(mpol, nrad, zgrid, xgrid, dtheta, dradcor, b_mc, &
+         & z0, x0, i, j, bval0)
+
+    vper = sqrt(two*bval0*mu)
+    gyro_radius = vper*vn_gk(ns)/(bval0*abs(charge_gk(ns))/mass_gk(ns))
+
+    dy1 = gyro_radius*gxdgy0/gx0
+    dy2 = gyro_radius*bval0/(GSpsi_prime*gx0)
+    dz1 = gyro_radius*gxdgz0/gx0
+    dz2 = gyro_radius*bdgxcgz0/(bval0*gx0)
+
+    do kp = 1, gyro_npt
+       x(kp) = x0 + gyro_radius*cos_gyro(kp,k)*gx0
+       x(kp) = max(x(kp), pfn_inner) !to prevent exceeding the radial boundary
+       x(kp) = min(x(kp), pfn_bdry) 
+       y(kp) = y0 + cos_gyro(kp,k)*dy1 + sin_gyro(kp,k)*dy2
+       call shift_toroidal(y(kp), toroidal_range)
+       z(kp) = z0 + cos_gyro(kp,k)*dz1 + sin_gyro(kp,k)*dz2
+       z(kp) = max(z(kp), theta_start)
+       z(kp) = min(z(kp), theta_start+dtheta2)
+!!$      z(kp) = z0 ! more rough approximation
+    enddo
+  end subroutine gyro_ring_core
+
+
+subroutine gyro_ring_core2(gyro_npt, x0, y0, z0, gyro_radius, x, y)
+    use magnetic_coordinates, only: mpol, nrad, zgrid, xgrid, dtheta, dradcor, &
+         & grad_psi, grad_psi_dot_grad_alpha,  &
+         & pfn_inner, pfn_bdry, toroidal_range, GSpsi_prime
+    use table_in_mc, only : b_mc
+    use interpolate_module, only: linear_2d_interpolate0, locate
+    use math, only: random_yj
+    implicit none
+    integer, intent(in) :: gyro_npt
+    real(p_), intent(in) :: x0, y0, z0, gyro_radius
+    real(p_), intent(out) :: x(gyro_npt), y(gyro_npt)
+    real(p_) :: bval0, gx0, gxdgy0
+    real(p_) :: angle, angle0, dy1, dy2
+    integer :: i, j, kp
+
+    call locate(mpol, zgrid, dtheta, z0, i)
+    call locate(nrad, xgrid, dradcor, x0, j)
+    call linear_2d_interpolate0(mpol, nrad, zgrid, xgrid, dtheta, dradcor, grad_psi, &
+         & z0, x0, i, j, gx0)
+    call linear_2d_interpolate0(mpol, nrad, zgrid, xgrid, dtheta, dradcor, grad_psi_dot_grad_alpha, &
+         & z0, x0, i, j, gxdgy0)
+    call linear_2d_interpolate0(mpol, nrad, zgrid, xgrid, dtheta, dradcor, b_mc, &
+         & z0, x0, i, j, bval0)
+
+    dy1 = gyro_radius*gxdgy0/gx0
+    dy2 = gyro_radius*bval0/(GSpsi_prime*gx0)
+    angle0 = random_yj(0)*twopi !0 means using last random number as iseed
+
+    do kp = 1, gyro_npt
+       angle = angle0 + twopi/gyro_npt*(kp-1)
+       x(kp) = x0 + gyro_radius*cos(angle)*gx0
+       y(kp) = y0 + cos(angle)*dy1 + sin(angle)*dy2
+       x(kp) = max(x(kp), pfn_inner) !to prevent exceeding the radial boundary
+       x(kp) = min(x(kp), pfn_bdry) 
+    enddo
+  end subroutine gyro_ring_core2
+  
+end module gyro_ring_mod
+module gyro_average_mod
+contains
+pure  subroutine gyro_average0(flr, x_ring, y_ring, z_ring, phix, phix_av)
+    use constants, only:  p_
+    use gk_module, only: gyro_npt
+    implicit none
+    real(p_), intent(in) :: x_ring(:), y_ring(:), z_ring(:)
+    logical, intent(in)  :: flr
+    real(p_), intent(in) :: phix(:,:,:)
+    real(p_), intent(out) :: phix_av
+    real(p_) :: phixp(gyro_npt)
+    integer :: kr, npt
+    
+    if (flr .eqv. .false.) then
+       npt = 1
+    else
+       npt = gyro_npt
+    endif
+
+    do kr = 1, npt
+       call field_at_particle0(x_ring(kr), y_ring(kr), z_ring(kr), phix, phixp(kr))
+    enddo
+    phix_av =sum(phixp(1:npt))/npt
+
+  end subroutine gyro_average0
+
+  pure subroutine field_at_particle0(radcor, alpha, theta, phix, phixp)
+    use constants, only: p_, one, zero, twopi
+    use magnetic_coordinates, only: mtor, nrad, ygrid, xgrid
+    use domain_decomposition, only: dtheta2, theta_start
+    implicit none
+    real(p_), intent(in) :: radcor, theta, alpha, phix(:,:,:)
+    real(p_), intent(out) :: phixp
+    real(p_) :: c1, c2, tmp1, tmp2
+
+    c1 = (theta-theta_start)/dtheta2
+    c2 = one-c1
+    tmp1 = interpolate2d(mtor, nrad, ygrid, xgrid, phix(:,:,1), alpha, radcor) 
+    tmp2 = interpolate2d(mtor, nrad, ygrid, xgrid, phix(:,:,2), alpha, radcor) 
+    phixp = tmp1*c2 + tmp2*c1
+
+  end subroutine field_at_particle0
+
+
+ pure subroutine gyro_average(ns, lost, x_ring, y_ring, z_ring, &
+       & phix_ga, phiy_ga, phiz_ga, ax_ga, ay_ga, az_ga, ahx_ga, ahy_ga, ahz_ga, ah_ga)
+    !output are used in computing drift and pushing weight.
+    use constants, only:  p_
+    use gk_module, only: gk_flr, gyro_npt, nm_gk
+    use magnetic_coordinates, only: xlow, xupp
+    implicit none
+    integer, intent(in)  :: ns
+    logical, intent(in)  :: lost(:)
+    real(p_), intent(in) :: x_ring(:,:), y_ring(:,:), z_ring(:,:)
+    real(p_), intent(out) :: phix_ga(:), phiy_ga(:), phiz_ga(:)
+    real(p_), intent(out) :: ax_ga(:), ay_ga(:), az_ga(:), ahx_ga(:), ahy_ga(:), ahz_ga(:), ah_ga(:)
+    real(p_), dimension(gyro_npt) :: phix0, phiy0, phiz0, ax0, ay0, az0, ahx0, ahy0, ahz0, ah0
+    integer :: nm, k, kr, npt
+
+    nm = nm_gk(ns)
+
+    if(gk_flr(ns) .eqv. .false.) then
+       npt=1
+    else
+       npt=gyro_npt
+    endif
+
+    do k = 1, nm
+       if (lost(k) .eqv. .true.) cycle
+       do kr = 1, npt
+          call field_at_particle(x_ring(kr,k), y_ring(kr,k), z_ring(kr,k), & 
+                              & phix0(kr), phiy0(kr), phiz0(kr), ax0(kr), ay0(kr), az0(kr), &
+                              & ahx0(kr), ahy0(kr), ahz0(kr), ah0(kr))
+       enddo
+       phix_ga(k) =sum(phix0(1:npt))/npt
+       phiy_ga(k) =sum(phiy0(1:npt))/npt
+       phiz_ga(k) =sum(phiz0(1:npt))/npt
+       ax_ga(k)   =sum(ax0(1:npt))/npt
+       ay_ga(k)   =sum(ay0(1:npt))/npt
+       az_ga(k)   =sum(az0(1:npt))/npt
+       ahx_ga(k)  =sum(ahx0(1:npt))/npt
+       ahy_ga(k)  =sum(ahy0(1:npt))/npt
+       ahz_ga(k)  =sum(ahz0(1:npt))/npt
+       ah_ga(k)   =sum(ah0(1:npt))/npt
+    enddo
+
+  end subroutine gyro_average
+
+
+  pure subroutine field_at_particle(radcor, alpha, theta, phix0,phiy0,phiz0,ax0,ay0,az0,ahx0,ahy0,ahz0,ah0)
+    use constants, only: p_, zero, one, twopi
+    use perturbation_field, only: phix, phiy, phiz, ax, ay, az, ahx, ahy, ahz, apara_h
+    use magnetic_coordinates, only: mtor, nrad, ygrid, xgrid
+    use domain_decomposition, only: dtheta2, theta_start
+    implicit none
+    real(p_), intent(in) :: radcor, theta, alpha
+    real(p_), intent(out) :: phix0, phiy0, phiz0, ax0, ay0, az0, ahx0, ahy0, ahz0, ah0
+    real(p_) :: coeff1,coeff2,tmp1,tmp2
+
+    coeff1 = (theta-theta_start)/dtheta2
+    !coeff1 = max(coeff1, zero) ! z of gyro-ring can exceed the z cell, so we need to truncate it.
+    !coeff1 = min(coeff1, one)
+    coeff2 = one - coeff1
+
+    tmp1=interpolate2d(mtor, nrad, ygrid, xgrid, phix(:,:,1), alpha, radcor) 
+    tmp2=interpolate2d(mtor, nrad, ygrid, xgrid, phix(:,:,2), alpha, radcor) 
+    phix0=tmp1*coeff2+tmp2*coeff1
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,phiy(:,:,1) ,alpha,radcor)  
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,phiy(:,:,2) ,alpha,radcor)  
+    phiy0=tmp1*coeff2+tmp2*coeff1
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,phiz(:,:,1) ,alpha,radcor)  
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,phiz(:,:,2) ,alpha,radcor)  
+    phiz0=tmp1*coeff2+tmp2*coeff1
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ax(:,:,1) ,alpha,radcor) 
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ax(:,:,2) ,alpha,radcor) 
+    ax0=tmp1*coeff2+tmp2*coeff1
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ay(:,:,1) ,alpha,radcor) 
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ay(:,:,2) ,alpha,radcor) 
+    ay0=tmp1*coeff2+tmp2*coeff1
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,az(:,:,1) ,alpha,radcor) 
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,az(:,:,2) ,alpha,radcor) 
+    az0=tmp1*coeff2+tmp2*coeff1
+
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ahx(:,:,1) ,alpha,radcor) 
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ahx(:,:,2) ,alpha,radcor) 
+    ahx0=tmp1*coeff2+tmp2*coeff1
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ahy(:,:,1) ,alpha,radcor) 
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ahy(:,:,2) ,alpha,radcor) 
+    ahy0=tmp1*coeff2+tmp2*coeff1
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ahz(:,:,1) ,alpha,radcor) 
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ahz(:,:,2) ,alpha,radcor) 
+    ahz0=tmp1*coeff2+tmp2*coeff1
+
+    tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,apara_h(:,:,1) ,alpha,radcor) 
+    tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,apara_h(:,:,2) ,alpha,radcor) 
+    ah0=tmp1*coeff2+tmp2*coeff1
+
+  end subroutine field_at_particle
+
+
+  pure function interpolate2d(nx, nz, xarray, zarray, psi,x,z) result(fval)
+    use constants,only: p_, one
+    implicit none
+    integer, intent(in) :: nx, nz
+    real(p_), intent(in) :: xarray(nx), zarray(nz), psi(nx,nz)
+    real(p_), intent(in) :: x, z
+    real(p_) :: fval
+    real(p_) :: dx, dz, t1, t2, slope
+    integer :: i, j, ii, jj, i_plus1
+
+    dx = xarray(2) - xarray(1)
+    i = floor(one+(x-xarray(1))/dx)
+    i_plus1 = i+1
+    if(i==nx) i_plus1 = 1 !periodic condition
+
+    dz = zarray(2) - zarray(1)
+    j = floor(one+(z-zarray(1))/dz)
+
+    if(j>=nz .or. j<=1) then
+       fval =0
+       return
+    endif
+
+    slope = (psi(i_plus1,j)-psi(i,j))/dx
+    t1 = psi(i,j)+slope*(x-xarray(i))
+    slope = (psi(i_plus1,j+1)-psi(i,j+1))/dx
+    t2 = psi(i,j+1)+slope*(x-xarray(i))
+    slope = (t2-t1)/dz
+    fval = t1+slope*(z-zarray(j))
+  end function interpolate2d
+
+end module gyro_average_mod
 module gk_polarization
-  use constants,only: p_
+  !use constants,only: p_
   implicit none
 !!$  real(p_),allocatable:: sigma(:,:)
 !!$  complex(p_),dimension(:,:,:),allocatable::  u,  vt
@@ -8813,7 +8617,7 @@ module gk_polarization
 !!$  real(p_),parameter:: singular_value_threshold=6d-4 !singular value s smaller than this will be revmoved, (1/s be replace by zero in the inverse of sigma matrix)
 contains
   subroutine prepare_polarization_matrix(ns, mmm) 
-    use constants, only:zero,one,two,pi,twopi,kev,epsilon0, ii
+    use constants, only: p_, zero,one,two,pi,twopi,kev,epsilon0, ii
     use control_parameters, only: space_charge_switch, nh_max
     use normalizing, only : tu,qu, nu
     use gk_module, only: mass_gk,charge_gk, gk_flr
@@ -8834,7 +8638,7 @@ contains
 
     mmm = (0._p_,0._p_)
     if(gk_flr(ns) .eqv. .false.) return !no polarization density
-    
+
     debye_length_sq=tu*kev*epsilon0/(nu*qu**2)
     !write(*,*) 'debye_length=',sqrt(debye_length_sq)
     nx = nrad - 1
@@ -8892,7 +8696,7 @@ contains
   subroutine prepare_polarization_matrix2(ns, mmm, nx) 
     ! direct numerical computation of the poloial density matrix,
     !refer to my note "nonlinear_gyrokinetic_equation.tm"
-    use constants, only: zero,one,two,pi,twopi,kev,epsilon0, four, ii
+    use constants, only: p_, zero,one,two,pi,twopi,kev,epsilon0, four, ii
     use normalizing, only: bn,ln,tu,qu, nu
     use gk_module, only: gk_flr, mass_gk, charge_gk
     use magnetic_coordinates, only: nrad, mtor, toroidal_range, dradcor, zgrid, dtheta, &
@@ -8980,10 +8784,80 @@ contains
   end subroutine prepare_polarization_matrix2
 
 
+  subroutine prepare_polarization_matrix20(ns, mmm, nx) 
+    ! direct numerical computation of the poloial density matrix using linear interpolation
+    use constants, only: p_, zero, one, two, pi, twopi, kev, ii
+    use normalizing, only: tu, qu, nu
+    use gk_module, only: gk_flr, mass_gk, charge_gk
+    use magnetic_coordinates, only: nrad, mtor, nsegment, dradcor, zgrid, xgrid
+    use domain_decomposition, only: ipol_eq
+    use table_in_mc, only: b_mc, bphi_mc
+    use gk_profile_funcs, only : gkt_func, gkn_func
+    use control_parameters, only: nh_min, nh_max
+    use gyro_ring_mod, only: gyro_ring_core2
+    integer, intent(in) :: ns, nx
+    complex(p_), intent(out) :: mmm(nx, nx, 0:nh_max)
+    real(p_) :: x, y, z, b
+    real(p_) :: dvper, vper_range, vper, omega, gyro_radius !omega, cycontron angular frequency
+    complex(p_) :: intg
+    real(p_) :: coefficient(nx) 
+    real(p_) :: vt, xlow, xupp, delta_y, c0, c1
+    integer, parameter :: nvper = 500, n1 = 32, n2 = 33
+    real(p_) :: xg(n1), yg(n1) ! guiding-center location
+    real(p_) :: xp(n2), yp(n2) ! particle location
+    integer ::  i, j, jeq, jp0, jp1, kg, kp, kn
+
+    mmm = (0._p_, 0._p_) !mmm matrix corresponds to -(np/nu)*(q/qu), where np is the poloarization number density
+    if(gk_flr(ns) .eqv. .false.) return
+
+    xlow = xgrid(2) 
+    xupp = xgrid(nrad-1)
+    vper_range = 5._p_ !in unit of local sqrt(T/m)
+    dvper = vper_range/(nvper-1) 
+
+    z = zgrid(ipol_eq)
+    y = 0
+    do j = 1, nx
+       jeq = j + 1
+       x = xgrid(jeq)
+       b = b_mc(ipol_eq, jeq)
+       omega = abs(b*charge_gk(ns))/mass_gk(ns)
+       coefficient(j) = (charge_gk(ns)/qu)**2/(gkt_func(x,ns)/tu)*(gkn_func(x,ns)/nu)
+       vt = sqrt(gkt_func(x,ns)*kev/mass_gk(ns))
+       do i = 1, nvper
+          vper = 0 + dvper*(i-1)
+          gyro_radius = vper*vt/omega
+          call gyro_ring_core2(n1, x, y, z, gyro_radius, xg, yg)
+          do kg = 1, n1
+             call gyro_ring_core2(n2, xg(kg), yg(kg), z, gyro_radius, xp, yp)
+             do kp = 1, n2
+                jp0 = 1 + floor((xp(kp)-xlow)/dradcor)
+                jp1 = jp0 + 1
+                if(jp1 >= nx .or. jp0<=1) cycle !no contribution
+                jeq = jp0 + 1 !eauilibrium xgrid index corresponding to jp0
+                c0 = (xp(kp) - xgrid(jeq))/dradcor 
+                c1 = one - c0
+                delta_y = yp(kp) - y
+                do kn = nh_min, nh_max !toroidal harmonics
+                   intg = dvper*vper*exp(-vper**2/two)*exp(ii*kn*nsegment*delta_y)
+                   mmm(j, jp0, kn) = mmm(j, jp0, kn) + intg*c1
+                   mmm(j, jp1, kn) = mmm(j, jp1, kn) + intg*c0
+                enddo
+             enddo
+          enddo
+       enddo
+       mmm(j,:,:) = -coefficient(j)*mmm(j,:,:)/(n1*n2)       
+    enddo
+
+    do j = 1, nx
+       mmm(j, j, :) = mmm(j, j, :) + coefficient(j) ! the non-gyro-averaging contribution
+    enddo
+  end subroutine prepare_polarization_matrix20
+
+
   subroutine prepare_polarization_matrix3(ns, mmm) 
     ! direct numerical computation of the poloial density matrix,
-    !refer to my note "nonlinear_gyrokinetic_equation.tm"
-    use constants, only: zero,one,two,pi,twopi,kev,epsilon0, four, ii
+    use constants, only: p_, zero,one,two,pi,twopi,kev,epsilon0, four, ii
     use normalizing, only: bn,ln,tu,qu, nu
     use gk_module, only: gk_flr, mass_gk, charge_gk
     use magnetic_coordinates, only: nrad, mtor, toroidal_range, dradcor, zgrid, dtheta, &
@@ -9067,11 +8941,11 @@ contains
     enddo
 
   end subroutine prepare_polarization_matrix3
-  
+
 
   pure  subroutine prepare_slowing_down_polarization_matrix(mmm, mass, charge, e_cut) 
     ! direct numerical computation of the poloial density matrix for slowing-down distribution
-    use constants,only:zero,one,two,pi,twopi, Mev,epsilon0, four, kev
+    use constants,only: p_, zero,one,two,pi,twopi, Mev,epsilon0, four, kev
     use normalizing,only:bn,ln,tu,qu, nu
     use magnetic_coordinates,only: nrad,mtor,toroidal_range, dradcor,zgrid,dtheta,&
          & xgrid, xlow, xupp, r_mc, z_mc, &
@@ -9167,7 +9041,7 @@ contains
 
   end subroutine prepare_slowing_down_polarization_matrix
 
-  
+
   pure real(p_) function slowing_down(x, E) result(f) !not used
     use constants,only: p_, kev
     use gk_radial_profiles, only : nalpha_object, alpha_normc, alpha_ecrit
@@ -9213,7 +9087,8 @@ contains
   end function f_Ed_integral
 
 
-  pure real(p_) function dNdx(x) result (z) 
+  pure real(p_) function dNdx(x) result (z)
+    use constants, only: p_
     use gk_radial_profiles, only : alpha_normc
     real(p_), intent(in) :: x
     real(p_), parameter :: dx = 1d-3
@@ -9248,295 +9123,6 @@ contains
 
 
 end module gk_polarization
-module gyro_ring_mod
-  use constants, only : p_, two, twopi
-  
-  real(p_), allocatable :: cos_gyro(:,:), sin_gyro(:,:)
-
-contains
-  subroutine set_gyro_phase()
-    use domain_decomposition, only: myid
-    use gk_module, only: gyro_npt, nmmax
-    use math, only: random_yj
-    implicit none
-    integer :: i, j, iseed
-    real(p_) :: gyro_angle0, gyro_angle, tmp
-
-    allocate(cos_gyro(gyro_npt,nmmax))
-    allocate(sin_gyro(gyro_npt,nmmax))
-
-    iseed = -(1177+myid*3) !set the iseed in different procs
-    tmp = random_yj(iseed) !just to trigger the use of the iseed, the generated random number is not used, 
-    do i=1, nmmax
-       gyro_angle0 = random_yj(0) !0 means using last random number as iseed, first gyro-angle
-       gyro_angle0 = gyro_angle0*twopi !scaled to [0:twopi]
-       !gyro_angle0=0 !comment in/out this if we do-not/do want the first gyro-angle to be random
-       do j = 1, gyro_npt ! gyro-angles are uniform distributed relatively to the first one.
-          gyro_angle =  gyro_angle0 + twopi/gyro_npt*(j-1)
-          cos_gyro(j,i) = cos(gyro_angle)
-          sin_gyro(j,i) = sin(gyro_angle)
-       enddo
-    enddo
-  end subroutine set_gyro_phase
-
-  subroutine gyro_ring(ns, lost, radcor, alpha, theta, mu, x_ring, y_ring, z_ring)
-    !output are used by gyro_average and deposit_gk
-    use gk_module, only:  gk_flr, nm_gk
-    use magnetic_coordinates, only: xlow, xupp
-    implicit none
-    integer, intent(in) :: ns
-    logical, intent(in) :: lost(:)
-    real(p_), intent(in) :: theta(:), radcor(:), alpha(:), mu(:)
-    real(p_), intent(out) :: x_ring(:, :), y_ring(:, :), z_ring(:, :)
-    integer :: nm, k
-
-    nm= nm_gk(ns)
-
-    if(gk_flr(ns) .eqv. .false.) then
-       do k = 1, nm
-          if (lost(k) .eqv. .true.) cycle
-          x_ring(1,k) = radcor(k)
-          y_ring(1,k) = alpha(k)
-          z_ring(1,k) = theta(k)
-       enddo
-    else
-       do k =1, nm
-          if (lost(k) .eqv. .true.) cycle
-          call gyro_ring_core(ns, k, radcor(k), alpha(k), theta(k), mu(k), x_ring(:,k), y_ring(:,k), z_ring(:,k))
-       enddo
-    endif
-  end subroutine gyro_ring
-
-
-pure subroutine gyro_ring_core(ns, k, x0, y0, z0, mu, x, y, z)
-    use magnetic_coordinates, only: mpol, nrad, zgrid, xgrid, dtheta, dradcor, &
-         & grad_psi, grad_alpha, grad_psi_dot_grad_alpha, grad_psi_dot_grad_theta, &
-         & pfn_inner, pfn_bdry, toroidal_range, GSpsi_prime
-    use table_in_mc, only : bdgxcgz, b_mc
-    use math,only: shift_toroidal
-    use gk_module, only:   mass_gk, charge_gk, vn_gk, gyro_npt
-    use domain_decomposition, only: theta_start, dtheta2
-    use math, only: shift_toroidal
-    use interpolate_module, only : linear_2d_interpolate0, locate
-    implicit none
-    integer, intent(in) :: ns, k
-    real(p_), intent(in) :: x0, y0, z0, mu
-    real(p_), intent(out) :: x(:), y(:), z(:)
-    real(p_) :: bval0, gx0, gxdgy0, gxdgz0, bdgxcgz0
-    real(p_) :: vper, gyro_radius, dy1, dy2, dz1, dz2
-    integer :: i, j, kp
-
-    call locate(mpol, zgrid, dtheta, z0, i)
-    call locate(nrad, xgrid, dradcor,x0, j)
-    call linear_2d_interpolate0(mpol,nrad,zgrid,xgrid,dtheta, dradcor, grad_psi,&
-         & z0, x0,i,j, gx0)
-    call linear_2d_interpolate0(mpol,nrad,zgrid,xgrid,dtheta, dradcor, grad_psi_dot_grad_alpha,&
-         & z0, x0,i,j,gxdgy0)
-    call linear_2d_interpolate0(mpol,nrad,zgrid,xgrid,dtheta, dradcor, grad_psi_dot_grad_theta,&
-         & z0, x0,i,j, gxdgz0)
-    call linear_2d_interpolate0(mpol, nrad, zgrid, xgrid, dtheta, dradcor, bdgxcgz,&
-         & z0, x0,i,j, bdgxcgz0)
-    call linear_2d_interpolate0(mpol, nrad, zgrid, xgrid, dtheta, dradcor, b_mc,&
-         & z0, x0,i,j,bval0)
-
-    vper=sqrt(two*bval0*mu)
-    gyro_radius=vper*vn_gk(ns)/(bval0*abs(charge_gk(ns))/mass_gk(ns))
-
-    dy1 = gyro_radius*gxdgy0/gx0
-    dy2 = gyro_radius*bval0/(GSpsi_prime*gx0)
-    dz1 = gyro_radius*gxdgz0/gx0
-    dz2 = gyro_radius*bdgxcgz0/(bval0*gx0)
-
-    do kp = 1, gyro_npt
-       x(kp)= x0 + gyro_radius*cos_gyro(kp,k)*gx0
-       x(kp) = max(x(kp), pfn_inner) !to prevent exceeding the radial computational box
-       x(kp) = min(x(kp), pfn_bdry) 
-       y(kp) = y0 + cos_gyro(kp,k)*dy1 + sin_gyro(kp,k)*dy2
-       call shift_toroidal(y(kp), toroidal_range)
-       z(kp) = z0 + cos_gyro(kp,k)*dz1 + sin_gyro(kp,k)*dz2
-       z(kp) = max(z(kp), theta_start)
-       z(kp) = min(z(kp), theta_start+dtheta2)
-    enddo
-  end subroutine gyro_ring_core
-end module gyro_ring_mod
-module gyro_average_mod
-contains
-pure  subroutine gyro_average0(flr, x_ring, y_ring, z_ring, phix, phix_av)
-    use constants, only:  p_
-    use gk_module, only: gyro_npt
-    implicit none
-    real(p_), intent(in) :: x_ring(:), y_ring(:), z_ring(:)
-    logical, intent(in)  :: flr
-    real(p_), intent(in) :: phix(:,:,:)
-    real(p_), intent(out) :: phix_av
-    real(p_) :: phixp(gyro_npt)
-    integer :: kr, npt
-    
-    if (flr .eqv. .false.) then
-       npt = 1
-    else
-       npt = gyro_npt
-    endif
-
-    do kr = 1, npt
-       call field_at_particle0(x_ring(kr), y_ring(kr), z_ring(kr), phix, phixp(kr))
-    enddo
-    phix_av =sum(phixp(1:npt))/npt
-
-  end subroutine gyro_average0
-
-  pure subroutine field_at_particle0(radcor, alpha, theta, phix, phixp)
-    use constants, only: p_, one, zero, twopi
-    use magnetic_coordinates, only: mtor, nrad, ygrid, xgrid
-    use domain_decomposition, only: dtheta2, theta_start
-    implicit none
-    real(p_), intent(in) :: radcor, theta, alpha, phix(:,:,:)
-    real(p_), intent(out) :: phixp
-    real(p_) :: c1, c2, tmp1, tmp2
-
-    c1 = (theta-theta_start)/dtheta2
-    c2 = one-c1
-    tmp1 = interpolate2d(mtor, nrad, ygrid, xgrid, phix(:,:,1), alpha, radcor) 
-    tmp2 = interpolate2d(mtor, nrad, ygrid, xgrid, phix(:,:,2), alpha, radcor) 
-    phixp = tmp1*c2 + tmp2*c1
-
-  end subroutine field_at_particle0
-
-
- pure subroutine gyro_average(ns, lost, x_ring, y_ring, z_ring, &
-       & phix_ga, phiy_ga, phiz_ga, ax_ga, ay_ga, az_ga, ahx_ga, ahy_ga, ahz_ga, ah_ga)
-    !output are used in computing drift and pushing weight.
-    use constants, only:  p_
-    use gk_module, only: gk_flr, gyro_npt, nm_gk
-    use magnetic_coordinates, only: xlow, xupp
-    implicit none
-    integer, intent(in)  :: ns
-    logical, intent(in)  :: lost(:)
-    real(p_), intent(in) :: x_ring(:,:), y_ring(:,:), z_ring(:,:)
-    real(p_), intent(out) :: phix_ga(:), phiy_ga(:), phiz_ga(:)
-    real(p_), intent(out) :: ax_ga(:),ay_ga(:),az_ga(:), ahx_ga(:),ahy_ga(:),ahz_ga(:), ah_ga(:)
-    real(p_), dimension(gyro_npt) :: phix0, phiy0, phiz0, ax0, ay0, az0, ahx0, ahy0, ahz0, ah0
-    integer :: nm, k, kr, npt
-
-    nm = nm_gk(ns)
-
-    if(gk_flr(ns) .eqv. .false.) then
-       npt=1
-    else
-       npt=gyro_npt
-    endif
-
-    do k = 1, nm
-       if (lost(k) .eqv. .true.) cycle
-       do kr = 1, npt
-          call field_at_particle(x_ring(kr,k), y_ring(kr,k), z_ring(kr,k), & 
-                              & phix0(kr), phiy0(kr), phiz0(kr), ax0(kr), ay0(kr), az0(kr), &
-                              & ahx0(kr), ahy0(kr), ahz0(kr), ah0(kr))
-       enddo
-       phix_ga(k) =sum(phix0(1:npt))/npt
-       phiy_ga(k) =sum(phiy0(1:npt))/npt
-       phiz_ga(k) =sum(phiz0(1:npt))/npt
-       ax_ga(k)   =sum(ax0(1:npt))/npt
-       ay_ga(k)   =sum(ay0(1:npt))/npt
-       az_ga(k)   =sum(az0(1:npt))/npt
-       ahx_ga(k)  =sum(ahx0(1:npt))/npt
-       ahy_ga(k)  =sum(ahy0(1:npt))/npt
-       ahz_ga(k)  =sum(ahz0(1:npt))/npt
-       ah_ga(k)   =sum(ah0(1:npt))/npt
-    enddo
-
-  end subroutine gyro_average
-
-
-  pure subroutine field_at_particle(radcor, alpha, theta, phix0,phiy0,phiz0,ax0,ay0,az0,ahx0,ahy0,ahz0,ah0)
-    use constants, only: p_, one, zero, twopi
-    use perturbation_field, only: phix, phiy, phiz, ax, ay, az, ahx, ahy, ahz, apara_h
-    use magnetic_coordinates, only: mtor, nrad, ygrid, xgrid
-    use domain_decomposition, only: dtheta2, theta_start
-    implicit none
-    real(p_), intent(in) :: radcor, theta, alpha
-    real(p_),intent(out) :: phix0, phiy0, phiz0, ax0, ay0, az0, ahx0, ahy0, ahz0, ah0
-    real(p_) :: coeff1,coeff2,tmp1,tmp2
-
-       coeff1=(theta-theta_start)/dtheta2
-       coeff2=one-coeff1
-
-       tmp1=interpolate2d(mtor, nrad, ygrid, xgrid, phix(:,:,1), alpha, radcor) 
-       tmp2=interpolate2d(mtor, nrad, ygrid, xgrid, phix(:,:,2), alpha, radcor) 
-       phix0=tmp1*coeff2+tmp2*coeff1
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,phiy(:,:,1) ,alpha,radcor)  
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,phiy(:,:,2) ,alpha,radcor)  
-       phiy0=tmp1*coeff2+tmp2*coeff1
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,phiz(:,:,1) ,alpha,radcor)  
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,phiz(:,:,2) ,alpha,radcor)  
-       phiz0=tmp1*coeff2+tmp2*coeff1
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ax(:,:,1) ,alpha,radcor) 
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ax(:,:,2) ,alpha,radcor) 
-       ax0=tmp1*coeff2+tmp2*coeff1
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ay(:,:,1) ,alpha,radcor) 
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ay(:,:,2) ,alpha,radcor) 
-       ay0=tmp1*coeff2+tmp2*coeff1
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,az(:,:,1) ,alpha,radcor) 
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,az(:,:,2) ,alpha,radcor) 
-       az0=tmp1*coeff2+tmp2*coeff1
-
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ahx(:,:,1) ,alpha,radcor) 
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ahx(:,:,2) ,alpha,radcor) 
-       ahx0=tmp1*coeff2+tmp2*coeff1
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ahy(:,:,1) ,alpha,radcor) 
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ahy(:,:,2) ,alpha,radcor) 
-       ahy0=tmp1*coeff2+tmp2*coeff1
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,ahz(:,:,1) ,alpha,radcor) 
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,ahz(:,:,2) ,alpha,radcor) 
-       ahz0=tmp1*coeff2+tmp2*coeff1
-
-       tmp1=interpolate2d(mtor,nrad,ygrid,xgrid,apara_h(:,:,1) ,alpha,radcor) 
-       tmp2=interpolate2d(mtor,nrad,ygrid,xgrid,apara_h(:,:,2) ,alpha,radcor) 
-       ah0=tmp1*coeff2+tmp2*coeff1
-
-  end subroutine field_at_particle
-
-
-  pure function interpolate2d(nx, nz, xarray, zarray, psi,x,z) result(fval)
-    use constants,only: p_, one
-    implicit none
-    integer, intent(in) :: nx, nz
-    real(p_), intent(in) :: xarray(nx), zarray(nz), psi(nx,nz)
-    real(p_), intent(in) :: x, z
-    real(p_) :: fval
-    real(p_) :: dx, dz, t1, t2, slope
-    integer :: i, j, ii, jj, i_plus1
-
-    dx = xarray(2) - xarray(1)
-    i = floor(one+(x-xarray(1))/dx)
-    i_plus1 = i+1
-    if(i==nx) i_plus1 = 1 !periodic condition
-
-    dz = zarray(2) - zarray(1)
-    j = floor(one+(z-zarray(1))/dz)
-
-    if(j>=nz .or. j<=1) then
-       fval =0
-       return
-    endif
-
-    slope = (psi(i_plus1,j)-psi(i,j))/dx
-    t1 = psi(i,j)+slope*(x-xarray(i))
-    slope = (psi(i_plus1,j+1)-psi(i,j+1))/dx
-    t2 = psi(i,j+1)+slope*(x-xarray(i))
-    slope = (t2-t1)/dz
-    fval = t1+slope*(z-zarray(j))
-  end function interpolate2d
-
-end module gyro_average_mod
 module poisson
   use constants, only : p_
   save
@@ -9566,16 +9152,17 @@ contains
     allocate(mmm(nx, nx, 0:nh_max))
 
     do ns = 1, nsm
-       if(ns<30) then
+       !if(ns<30) then
           call prepare_polarization_matrix(ns, mmm)
           !call prepare_polarization_matrix2(ns, mmm, nx)
+          !call prepare_polarization_matrix20(ns, mmm, nx)
           !call prepare_polarization_matrix3(ns, mmm)
-       else
-          call prepare_slowing_down_polarization_matrix(mmm, 4*atom_mass_unit, 2*elementary_charge, 3.5*Mev)
-       endif
+       !else
+       !   call prepare_slowing_down_polarization_matrix(mmm, 4*atom_mass_unit, 2*elementary_charge, 3.5*Mev)
+       !endif
        polarization(:,:,:) = polarization + mmm
     enddo
-if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2+1, nh_max)), imag(polarization(nx/2,nx/2+1, nh_max))
+if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polarization(nx/2,nx/2, nh_max))
 
     allocate(poisson_matrix(nx, nx, 0:nh_max))
     allocate(ipiv(nx, 0:nh_max))
@@ -9605,7 +9192,7 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2+1, nh_max)), imag(polar
   end subroutine prepare_poisson_matrix
 
 
-  subroutine solve_poisson(density_left, density_right, potential, phix, phiy, phiz)
+  subroutine solve_poisson(density_left, density_right, potential, phix, phiy, phiz, phi_dft)
     use constants, only: p_, zero, elementary_charge
     use magnetic_coordinates, only: m=>mtor, n=>nrad, jacobian_av, abs_jacobian, &
          & mpol2, xgrid, dradcor, dtor
@@ -9626,15 +9213,16 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2+1, nh_max)), imag(polar
     implicit none
     real(p_), intent(in) :: density_left(:,:), density_right(:,:)
     real(p_), intent(out), dimension(:,:,:) :: potential, phix, phiy, phiz
+    complex(p_), intent(out) :: phi_dft(0:m-1, n-2)
     real(p_) :: density(0:m-1,n), source(0:m-1,n-2), source_dst(0:m-1,n-2), phi(0:m-1,n-2)
-    complex(p_) :: source_dft(0:m-1, n-2), phi_dft(0:m-1, n-2), phix_dft(0:m-1, n-2)
+    complex(p_) :: source_dft(0:m-1, n-2), phix_dft(0:m-1, n-2)
     real(p_) :: signal_dst(1:1, n-2), signal(1:1, n-2)
     real(p_) :: phi_n0(n-2), sum_phi(n-2), av_phi(n-2)
     integer :: kn, ierr, j,i, it, jeq
     real(p_) :: coeff, x
 
     call merge_source(density_left, density_right, density)
-    do j=1,n
+    do j = 1, n
        density(:,j) = density(:,j)*w_unit/dvol(j)/nu
     enddo
     source = density(:,2:n-1)
@@ -9727,7 +9315,6 @@ subroutine potential_to_cylindrical_field()
 
   real(p_):: potential_psi(mtor,nrad),potential_alpha(mtor,nrad),potential_theta(mtor,nrad)
   real(p_):: ef_cyl_r(mtor,nrad),ef_cyl_z(mtor,nrad),ef_cyl_phi(mtor,nrad)
-  !complex(p_):: ef_cyl_r_dft(mtor,nrad),ef_cyl_z_dft(mtor,nrad),ef_cyl_phi_dft(mtor,nrad)
   complex(p_):: potential_dft(mtor,nrad),out(mtor,nrad)
   real(p_):: potential_dst(mtor,nrad) !discrete sine transform
   integer:: i,j,i_left,i_right,j_left,j_right,ierr
@@ -9810,16 +9397,16 @@ contains
     use constants, only: ii, zero, one, two, pi, twopi, kev, epsilon0, c
     use gk_module, only: mass_gk, charge_gk, nsm, gk_flr
     use magnetic_coordinates, only: nrad, nrad, toroidal_range, &
-         & xgrid, xlow, xupp, grad_psi, grad_alpha,grad_psi_dot_grad_alpha
+         & xgrid, xlow, xupp, grad_psi, grad_alpha,grad_psi_dot_grad_alpha, lapx, lapy
     use domain_decomposition, only: ipol_eq
     use gk_profile_funcs, only : gkn_func
     use control_parameters, only : nh_max
     implicit none
     real(p_) :: gy0, gx0, gxdgy0
     integer :: j, jp, m, n, nx, jeq, ns, info
-    real(p_) :: part1, lx, ly, x
+    real(p_) :: lx, ly, x, c1, c2, c3, c4, c5
     real(p_) :: skin(nrad-2), wp2(nrad, nsm)
-    complex(p_) :: s, part2
+    complex(p_) :: s, part1, part2
 
     nx = nrad - 1
     allocate(mpara(nx-1,nx-1,0:nh_max))
@@ -9844,11 +9431,16 @@ contains
           gx0 = grad_psi(ipol_eq, jeq)
           gy0 = grad_alpha(ipol_eq, jeq)
           gxdgy0 = grad_psi_dot_grad_alpha(ipol_eq, jeq)
+          c1 = gx0**2
+          c2 = gy0**2
+          c3 = 2*gxdgy0
+          c4 = lapx(ipol_eq, jeq)
+          c5 = lapy(ipol_eq, jeq)
           do jp = 1, nx-1
              s = 0._p_
              do m = 1, nx-1
-                part1 = (m*pi/lx)**2*gx0**2 + (n*twopi/ly)**2*gy0**2
-                part2 = -ii*n*twopi/ly*(m*pi/lx)*2*gxdgy0
+                part1 = (m*pi/lx)**2*c1 + (n*twopi/ly)**2*c2 !- c5*ii*n*twopi/ly
+                part2 = -ii*n*twopi/ly*(m*pi/lx)*c3 !- c4*m*pi/lx
                 s = s + sin(jp*m*pi/nx) * (part1*sin(j*m*pi/nx) + part2*cos(j*m*pi/nx))
              enddo
              mpara(j,jp,n) = s*two/nx  
@@ -9866,13 +9458,13 @@ contains
   end subroutine prepare_ampere_matrix
 
 
-  subroutine solve_ampere(isolve, jpar_left, jpar_right, apara_s, apara_h, apara, ax, ay, az, ahx, ahy, ahz)
+  subroutine solve_ampere(isolve, jpar_left, jpar_right, apara_s, apara_h, apara, ax, ay, az, ahx, ahy, ahz, apara_dft)
     use constants, only: p_, c, kev, epsilon0
     use normalizing, only: vu, tu, qu, nu
     use magnetic_coordinates, only: m=>mtor, n=>nrad, dtor,dradcor, jacobian
     use gk_module, only: w_unit
     use control_parameters, only: ismooth, nh_min, nh_max
-    use derivatives_in_xyz, only: x_derivative0, y_derivative, z_derivative, z_derivative0
+    use derivatives_in_xyz, only: x_derivative0, x_derivative, y_derivative, z_derivative, z_derivative0
     use communication_connection, only: merge_source, update_scalar_at_right_boundary, &
          & update_derivatives_at_right_boundary
     use transform_module
@@ -9886,10 +9478,11 @@ contains
     real(p_), intent(in) :: apara_s(:,:,:)
     real(p_), intent(out), dimension(:,:,:) :: apara_h
     real(p_), intent(out), dimension(:,:,:) :: apara, ax, ay, az, ahx, ahy, ahz
-    real(p_) :: jpar(m,n) !, lap_As(m,n)
+    complex(p_), intent(out) :: apara_dft(0:m-1, n-2)
+    real(p_) :: jpar(m,n), lap_As(m,n)
     real(p_) :: rhs(m, n-2) !, residual(m, n-2)
     complex(p_) :: rhs_dft(0:m-1, n-2), ah_dft(0:m-1, n-2)
-    complex(p_) :: lap_As_dft(m, n), t_dft(0:m-1, n-2), ax_dft(0:m-1, n-2),  ahx_dft(0:m-1, n-2)
+    complex(p_) :: lap_As_dft(m, n), ax_dft(0:m-1, n-2),  ahx_dft(0:m-1, n-2)
     real(p_) :: debye_sq
     integer :: kn, i, j, jeq
 
@@ -9900,13 +9493,17 @@ contains
        jpar(:,j)  = jpar(:,j)*(w_unit/dvol(j)/nu)
     enddo
 
-    !call laplacian(apara_s(:,:,1), lap_As)
-    !rhs(:,:) = lap_As(:, 2:n-1) + jpar(:, 2:n-1)/debye_sq*(vu/c)**2
-    rhs(:,:) = jpar(:, 2:n-1)/debye_sq*(vu/c)**2
+    call laplacian(apara_s(:,:,1), lap_As)
+    rhs(:,:) = lap_As(:, 2:n-1) + jpar(:, 2:n-1)/debye_sq*(vu/c)**2
 
     call oned_DFT_parallel_version(rhs, rhs_dft, m, n-2) !calculating DFT along the first dimension
-    call laplacian_dft(apara_s(:, :, 1), lap_As_dft(:, :), m, n)
-    rhs_dft = rhs_dft + lap_As_dft(:, 2:n-1)
+
+    ! do kn = nh_min, nh_max
+    !    call mfilter_for_each_n(rhs_dft(kn,:), n-2, kn)
+    ! enddo
+    ! do kn = 1, nh_max ! negative toroidal mode number
+    !    rhs_dft(m-kn,:) = conjg(rhs_dft(kn,:)) 
+    ! enddo
 
     ah_dft = 0._p_ !only some harmonics are solved, others are assumed to be zero
     call solver_toroidal_mode_number_parallel(mpara, IPIV, rhs_dft, ah_dft)
@@ -9930,10 +9527,9 @@ contains
     call update_scalar_at_right_boundary(apara_h)
 
     if(isolve==1) then
-       !call x_derivative  (apara_h(:,:,1), ahx(:,:,1))
-       call x_derivative0(ah_dft, ahx_dft) !more accurate than taking x derivative in real space
-       call oned_backward_DFT_parallel_version(ahx_dft, ahx(:, 2:n-1, 1), m, n-2)
-
+       call x_derivative  (apara_h(:,:,1), ahx(:,:,1))
+       !call x_derivative0(ah_dft, ahx_dft) ! might be more accurate than taking x derivative in real space
+       !call oned_backward_DFT_parallel_version(ahx_dft, ahx(:, 2:n-1, 1), m, n-2)
        call y_derivative(apara_h(:,:,1), ahy(:,:,1))
        call z_derivative  (apara_h(:,:,:), ahz(:,:,1))
        call update_derivatives_at_right_boundary(ahx, ahy, ahz)
@@ -9941,24 +9537,23 @@ contains
 
     apara = apara_h + apara_s
 
-    call oned_DFT_parallel_version(apara(:, 2:n-1, 1), t_dft, m, n-2) !DFT along the first dimension
+    call oned_DFT_parallel_version(apara(:, 2:n-1, 1), apara_dft, m, n-2) !DFT along the first dimension
     do kn = nh_min, nh_max
-       !call mfilter_for_each_n(t_dft(kn,:), n-2, kn)
+       !call mfilter_for_each_n(apara_dft(kn,:), n-2, kn)
     enddo
     do kn = 1, nh_max ! negative toroidal mode number
-       t_dft(m-kn,:) = conjg(t_dft(kn,:)) 
+       apara_dft(m-kn,:) = conjg(apara_dft(kn,:)) 
     enddo
 
-    !if(nh_min == 0) call mfilter_for_n0(t_dft(0,:), n-2)
-    if(nh_min == 0) call surface_average_of_n0(t_dft(0, :), n-2)
+    !if(nh_min == 0) call mfilter_for_n0(apara_dft(0,:), n-2)
+    if(nh_min == 0) call surface_average_of_n0(apara_dft(0, :), n-2)
 
-    call oned_backward_DFT_parallel_version(t_dft, apara(:, 2:n-1, 1), m, n-2)
+    call oned_backward_DFT_parallel_version(apara_dft, apara(:, 2:n-1, 1), m, n-2)
     call update_scalar_at_right_boundary(apara)
 
-    !call x_derivative(apara(:,:,1), ax(:,:,1))
-    call x_derivative0(t_dft, ax_dft) !more accurate than taking x derivative in real space
-    call oned_backward_DFT_parallel_version(ax_dft, ax(:, 2:n-1, 1), m, n-2)
-
+    call x_derivative(apara(:,:,1), ax(:,:,1))
+    ! call x_derivative0(apara_dft, ax_dft) !more accurate than taking x derivative in real space
+    ! call oned_backward_DFT_parallel_version(ax_dft, ax(:, 2:n-1, 1), m, n-2)
     call y_derivative(apara(:,:,1), ay(:,:,1))
     call z_derivative(apara(:,:,:), az(:,:,1))
     call update_derivatives_at_right_boundary(ax, ay, az)
@@ -9977,7 +9572,6 @@ contains
     real(p_), intent(in) :: aOld(:,:), dtao
     real(p_), intent(in) :: phiz(:,:,:)
     real(p_), intent(out) :: aNew(:,:)
-    complex(p_) :: a_dft(0:m-1, n)
     real(p_) :: rate
     integer :: i, j, kn
     ! use dapara_s/dt =-b\cdot\grad_phi
@@ -10037,7 +9631,7 @@ contains
   subroutine laplacian(apara, out)
     use constants, only: p_
     use magnetic_coordinates, only: m=>mtor, n=>nrad,  &
-         & grad_psi, grad_psi_dot_grad_alpha, grad_alpha
+         & grad_psi, grad_psi_dot_grad_alpha, grad_alpha, lapx, lapy
     use domain_decomposition, only: ipol_eq
     use derivatives_in_xyz, only: x_derivative, y_derivative
     implicit none
@@ -10056,46 +9650,11 @@ contains
        jeq = j
        out(:,j) = grad_psi  (ipol_eq, jeq)**2*apara_xx(:,j)  &
             &   + grad_alpha(ipol_eq, jeq)**2*apara_yy(:,j)  &
-            &   + 2*grad_psi_dot_grad_alpha(ipol_eq, jeq)*apara_xy(:,j)
+            &   + 2*grad_psi_dot_grad_alpha(ipol_eq, jeq)*apara_xy(:,j) !&
+            !&   + lapx(ipol_eq, jeq)* apara_x(:,j) + lapy(ipol_eq, jeq)* apara_y(:,j)
 
     enddo
   end subroutine laplacian
-
-
-  subroutine laplacian_dft(As, out, m, n)
-    use constants, only: p_, ii, twopi
-    use magnetic_coordinates, only:  ly=>toroidal_range, &
-         & grad_psi, grad_psi_dot_grad_alpha, grad_alpha
-    use domain_decomposition, only: ipol_eq
-    use control_parameters, only: nh_min, nh_max
-    use derivatives_in_xyz, only: x_derivative0, y_derivative
-    use transform_module
-    implicit none
-    integer, intent(in) :: m, n
-    real(p_), intent(in) :: As(0:m-1,n)
-    complex(p_), intent(out) :: out(0:m-1,n)
-    complex(p_) :: As_dft(0:m-1, n), As_dft_x(0:m-1,n), As_dft_xx(0:m-1,n)
-    integer :: j, jeq, nh, kn
-
-    call oned_DFT_parallel_version(As(:, 2:n-1), As_dft(:, 2:n-1), m, n-2) !calculating DFT along the first dimension
-    As_dft(:,1)=0; As_dft(:,n)=0
-    call x_derivative0(As_dft, As_dft_x)
-    call x_derivative0(As_dft_x, As_dft_xx)
-
-    do nh = 0, m-1
-       if (nh .le. m/2) then
-          kn = nh
-       else
-          kn = nh - m
-       endif
-       do j = 1, n
-          jeq = j
-          out(nh,j) = grad_psi  (ipol_eq, jeq)**2*As_dft_xx(nh,j)  &
-               &   - grad_alpha(ipol_eq, jeq)**2*As_dft(nh,j)*(kn*twopi/ly)**2  &
-               &   + 2*grad_psi_dot_grad_alpha(ipol_eq, jeq)*As_dft_x(nh,j)*(ii*kn*twopi/ly)
-       enddo
-    enddo
-  end subroutine laplacian_dft
   
   subroutine skin_current_residual(iter, isolve, apara_h, lap_As, jpar_ref, residual)
     use constants,only:zero,one,two,pi,twopi,kev,epsilon0, c, mu0
@@ -11484,7 +11043,7 @@ contains
     norm2 = tu*kev/(qu*vu*bn*ln)
     do k = 1, nm_gk(ns) !number of MC markers
        if (lost(k) .eqv. .true.) cycle
-       call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,w1,z(k),x(k),w1v) 
+       !call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,w1,z(k),x(k),w1v) 
        call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,w2,z(k),x(k),w2v)
        call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,w3,z(k),x(k),w3v)
        call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,w4,z(k),x(k),w4v)
@@ -11499,8 +11058,8 @@ contains
        call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,bdgxcgy,z(k),x(k),bdgxcgy0)
        call linear_2d_interpolate(mpol,nrad,zgrid,xgrid,b_mc, z(k),x(k), bval)
        bsq = bval**2
-       factor1 = one + cs*vpar(k)/twopi*w1v
-       !factor1=one !for testing, no difference
+       !factor1 = one + cs*vpar(k)/twopi*w1v
+       factor1 = one !for testing, no difference
        xdrift0(k) = cs*vpar(k)**2/twopi*w3v/factor1 +cs*mu(k)/(twopi*factor1)*w6v 
        ydrift0(k) = cs*vpar(k)**2/(twopi*factor1)*w5v +cs*mu(k)/(twopi*factor1)*w8v
        zdrift0(k) = vpar(k)*(w2v+cs*vpar(k)/twopi*w4v)/factor1 &
@@ -11570,12 +11129,12 @@ contains
        vpar_new(k)  = vpar_old(k) + mirror_force(k)*dt
 
        ! Comment out the following if-structure if you do not want particle refilling:
-       if ((x_new(k) > xupp) .or. (x_new(k) < xlow) ) then
-          x_new(k) = x_old(k)
-          z_new(k) = - z_old(k)
-          y_new(k) = y_old(k) + 2*qfunc(x_old(k))*z_old(k)
-          weight(k) = 0
-        endif
+!!$       if ((x_new(k) > xupp) .or. (x_new(k) < xlow) ) then
+!!$          x_new(k) = x_old(k)
+!!$          z_new(k) = - z_old(k)
+!!$          y_new(k) = y_old(k) + 2*qfunc(x_old(k))*z_old(k)
+!!$          weight(k) = 0
+!!$        endif
 
        if ((z_new(k) .ge. pi) .or. (z_new(k) < -pi)) &
             & call shift_gc_theta_then_alpha(x_new(k), z_new(k), y_new(k))
@@ -11641,7 +11200,7 @@ contains
        t0 = gkt_func(x, ns)
        n0 = gkn_func(x, ns)
        gradient = -gkdndx_func(x,ns)/n0 - gkdtdx_func(x,ns)/t0 &
-            & *(v(k)**2/(two*t0*kev/(mass_gk(ns)*vn_gk(ns)**2))-1.5_p_)
+            & * (v(k)**2/(two*t0*kev/(mass_gk(ns)*vn_gk(ns)**2)) - 1.5_p_)
        norm = (charge_gk(ns)/qu)/(t0/tu)
        norm2 = norm*vn_gk(ns)/vu
 
@@ -11652,10 +11211,9 @@ contains
             & + norm2*vpar(k)*(ahx(k)*xdrift1(k)+ ahy(k)*ydrift1(k) + ahz(k)*zdrift1(k))*gk_nonlinear(ns) & 
             & - norm2*(-mirror_force(k))*ah(k)
 
-       w_new(k) = w(k) + rate* f0(x,v(k),ns)*ps_vol_gk(k,ns)/w_unit*dtao
+       w_new(k) = w(k) + rate* f0(x, v(k), ns)*ps_vol_gk(k,ns)/w_unit*dtao
     enddo
 
-    !w_new(1:nm) = sum(w_new(1:nm))/nm !weight smoothing, for testing
     return
 
 1000 do k = 1, nm ! for slowing-down distribution
@@ -11668,7 +11226,7 @@ contains
        norm2 = norm*vn_gk(ns)/vu
 
        rate = - xdrift1(k) * dfdx &
-            & + norm*(phix(k)*xdrift0(k)+phiy(k)*ydrift0(k)+phiz(k)*zdrift0(k))*dfdE  &
+            & + norm*(phix(k)*xdrift0(k)+phiy(k)*ydrift0(k)+phiz(k)*zdrift00(k))*dfdE  &
             & + norm*(phix(k)*xdrift1(k)+phiy(k)*ydrift1(k)+phiz(k)*zdrift1(k))*dfdE*gk_nonlinear(ns)  & 
             & - norm2*vpar(k)*(ahx(k)*xdrift0(k)+ ahy(k)*ydrift0(k) + ahz(k)*zdrift0(k))*dfdE &
             & - norm2*vpar(k)*(ahx(k)*xdrift1(k)+ ahy(k)*ydrift1(k) + ahz(k)*zdrift1(k))*dfdE*gk_nonlinear(ns) & 
@@ -12096,9 +11654,10 @@ contains
     integer, intent(in) :: ns
     logical, intent(in) :: lost(:)
     real(p_), intent(in) :: mu_gk(:), vpar_gk(:), w_gk(:), xgc(:), zgc(:), xdrift1(:), xdrift0(:)
-    integer, parameter :: nsub = 20
-    real(p_) :: tmp_xa(nsub), dv(nsub), myheat_flux(nsub), heat_flux(nsub), myheat_flux0(nsub), heat_flux0(nsub)
-    real(p_) :: myptcl_flux(nsub), ptcl_flux(nsub), mydensity_perturbation(nsub), density_perturbation(nsub)
+    integer, parameter :: nsub = 50
+    real(p_) :: tmp_xa(nsub), dv(nsub)
+    real(p_) :: myheat_flux(nsub), heat_flux(nsub), myheat_flux0(nsub), heat_flux0(nsub)
+    real(p_) :: myptcl_flux(nsub), ptcl_flux(nsub), mydensity_perturb(nsub), density_perturb(nsub)
     real(p_) :: myptcl_flux0(nsub), ptcl_flux0(nsub)
     real(p_) :: diffusivity(nsub), gyro_bohm(nsub)
     real(p_) :: x, dx, kinetic, gradient, trash
@@ -12138,7 +11697,7 @@ contains
 
     myheat_flux = 0._p_; myheat_flux0 = 0._p_
     myptcl_flux = 0._p_; myptcl_flux0 = 0._p_
-    density_perturbation = 0._p_
+    mydensity_perturb = 0._p_
     do k = 1, nm
        if(lost(k) .eqv. .true.) cycle
        j = floor((xgc(k)- tmp_xa(1))/dx)+1
@@ -12149,14 +11708,14 @@ contains
        myptcl_flux(j) = myptcl_flux(j) + w_gk(k)        *xdrift1(k)/grad_psi_func(zgc(k), xgc(k))
        myheat_flux0(j) = myheat_flux0(j) + w_gk(k)*kinetic*xdrift0(k)/grad_psi_func(zgc(k), xgc(k))
        myptcl_flux0(j) = myptcl_flux0(j) + w_gk(k)        *xdrift0(k)/grad_psi_func(zgc(k), xgc(k))
-       mydensity_perturbation(j) = mydensity_perturbation(j) + w_gk(k)
+       mydensity_perturb(j) = mydensity_perturb(j) + w_gk(k)
     enddo
 
     call MPI_Reduce(myheat_flux, heat_flux, nsub, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
     call MPI_Reduce(myptcl_flux, ptcl_flux, nsub, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
     call MPI_Reduce(myheat_flux0, heat_flux0, nsub, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
     call MPI_Reduce(myptcl_flux0, ptcl_flux0, nsub, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
-    call MPI_Reduce(mydensity_perturbation, density_perturbation, nsub, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)    
+    call MPI_Reduce(mydensity_perturb, density_perturb, nsub, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)    
 
     if(myid==0) then
        do j = 1, nsub
@@ -12168,22 +11727,72 @@ contains
           ptcl_flux0(j) = ptcl_flux0(j)*w_unit            *vn_gk(ns)   /dv(j) 
           heat_flux0(j) = heat_flux0(j)*w_unit*mass_gk(ns)*vn_gk(ns)**3/dv(j) !in unit m^2/s
 
-          density_perturbation(j) = density_perturbation(j)*w_unit/dv(j) 
+          density_perturb(j) = density_perturb(j)*w_unit/dv(j) 
           gyro_bohm(j) = sqrt(mass_gk(ns))*sqrt(gkt_func(x,ns)*kev)**3/(minor_a*Baxis**2*charge_gk(ns)**2) !in unit m^2/s
           gradient = -gkn_func(x,ns)*gkdtdx_func(x,ns)*kev*sum(grad_psi(:,jeq))/mpol !assume constant density
           diffusivity(j) = 2./3.0*heat_flux(j)/gradient
        enddo
-       write(u1(ns),'(50(1pe20.8))') time, sum(diffusivity)/nsub, sum(diffusivity/gyro_bohm)/nsub, &
-            & sum(heat_flux)/nsub, (heat_flux(j), j=1, nsub)
-       write(u2(ns),'(50(1pe20.8))') time, (ptcl_flux(j), j=1, nsub)
-       write(u1b(ns),'(50(1pe20.8))') time, trash, trash, &
-            & sum(heat_flux0)/nsub, (heat_flux0(j), j=1, nsub)
-       write(u2b(ns),'(50(1pe20.8))') time, (ptcl_flux0(j), j=1, nsub)
-
-       write(u3(ns),'(50(1pe20.8))') time, (density_perturbation(j), j=1, nsub)
+       !write(u1(ns),'(999(1pe20.8))') time, sum(diffusivity)/nsub, sum(diffusivity/gyro_bohm)/nsub, &
+       write(u1(ns),'(999(1pe20.8))')  time, sum(heat_flux)/nsub, (heat_flux(j), j=1, nsub)
+       write(u2(ns),'(999(1pe20.8))')  time, sum(ptcl_flux)/nsub, (ptcl_flux(j), j=1, nsub)
+       write(u1b(ns),'(999(1pe20.8))') time, sum(heat_flux0)/nsub, (heat_flux0(j), j=1, nsub)
+       write(u2b(ns),'(999(1pe20.8))') time, sum(ptcl_flux0)/nsub, (ptcl_flux0(j), j=1, nsub)
+       write(u3(ns), '(999(1pe20.8))') time, sum(density_perturb)/nsub, (density_perturb(j), j=1, nsub)
     endif
 
   end subroutine compute_particle_and_heat_flux
+
+
+  subroutine compute_entropy(time, ns, lost, w_gk, xgc, v)
+    use constants, only: p_, two
+    use gk_module,only: nm_gk, w_unit, nsm, ps_vol_gk
+    use load_gk_mod, only: f0
+    use domain_decomposition, only: myid, numprocs
+    use mpi
+    implicit none
+    real(p_), intent(in) :: time
+    integer, intent(in) :: ns
+    logical, intent(in) :: lost(:)
+    real(p_), intent(in) :: w_gk(:), xgc(:), v(:)
+    real(p_) :: my_entropy, entropy, my_f1f0, f1f0, tmp
+    integer :: nm, i, k, ierr, nptcl
+    character(len=64) :: fn1, fn2
+    logical, save :: is_first = .true.
+    integer, allocatable, save :: u1(:), u2(:)
+
+    if ((is_first .eqv. .true.) .and. (myid==0)) then 
+       is_first=.false.
+       allocate(u1(nsm), u2(nsm))
+       do i = 1, nsm
+          fn1 = 'entropy_nsx.txt'
+          fn2 = 'f1f0_nsx.txt'
+          write(fn1(11:11),'(i1.1)') i
+          write(fn2(8:8),'(i1.1)') i
+          open(newunit=u1(i), file=fn1, position="append")
+          open(newunit=u2(i), file=fn2, position="append")
+       enddo
+    endif
+
+    nm = nm_gk(ns)
+    
+    my_entropy = 0.
+    my_f1f0 = 0.
+    nptcl = 0
+    do k = 1, nm
+       if(lost(k) .eqv. .true.) cycle
+       nptcl = nptcl +1
+       tmp = w_gk(k)/(f0(xgc(k), v(k), ns)*ps_vol_gk(k,ns)/w_unit) ! delta_f/f0
+       my_entropy = my_entropy + tmp**2
+       my_f1f0 = my_f1f0 + tmp
+    enddo
+    my_entropy = my_entropy / nptcl
+    my_f1f0 = my_f1f0 / nptcl
+    call MPI_Reduce(my_entropy, entropy, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+    call MPI_Reduce(my_f1f0,    f1f0,    1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)    
+    
+    if(myid==0) write(u1(ns),'(50(1pe20.8))') time, entropy/numprocs
+    if(myid==0) write(u2(ns),'(50(1pe20.8))') time, f1f0/numprocs
+  end subroutine compute_entropy
  
   
 subroutine count_lost_markers_gk(ns, radcor)  !diagnosis
@@ -12451,10 +12060,10 @@ subroutine mode_evolution(t, s, m, n, file_unit)
   integer, intent(in) :: file_unit
   integer :: i0, j0, j
 
-  i0 = m/2 !toroidal location
-  j0 = n/2 !radial location
-  !write(file_unit,'(3000(1pe18.4))') t, (s(i0, j),  j = 1, n, 2)
-  write(file_unit,'(3000(1pe18.4))') t, s(i0, j0)
+  i0 = m/2 ! Toroidal location
+  !j0 = n/2 ! Radial location
+  write(file_unit,'(3000(1pe18.4))') t, (s(i0, j),  j = 1, n, 4)
+  !write(file_unit,'(3000(1pe18.4))') t, s(i0, j0)
 
 end subroutine mode_evolution
 
@@ -12566,29 +12175,22 @@ subroutine mode_evolution5(t, s, m, n, file_unit)
 end subroutine mode_evolution5
 
 
-subroutine mode_evolution6(t, s, m, n, file_unit) 
+subroutine nharmonic_evolution(t, sdft, file_unit) 
   use constants, only: p_
-  use, intrinsic :: iso_c_binding
-  use my_FFTW3, only: plan_toroidal, in1, out1
+  use magnetic_coordinates, only : nrad, mtor
   use control_parameters, only: nh_min, nh_max
   implicit none
-  include 'fftw3.f03'
   real(p_), intent(in) :: t
-  integer, intent(in) :: m, n
-  real(p_), intent(in) :: s(0:m-1,0:n-1)
+  complex(p_), intent(in) :: sdft(0:,:)
   integer, intent(in) :: file_unit
-  integer :: i, j0
-  complex(p_) :: spectrum(0:m-1)
+  integer :: i, j
 
-  j0 = n/2 !choose a radial location
+  !j0 = nrad/2 !choose a radial location
+  write(file_unit,'(900(1pe18.4))') t, ((real(sdft(i, j))/mtor, imag(sdft(i, j))/mtor, i = nh_min, nh_max), j = 1, nrad-2, 4)
 
-  in1(:) = s(:,j0) !copy in, meanwhile convert real array to complex array
-  call fftw_execute_dft(plan_toroidal, in1(:), out1(:))
-  spectrum(:) = out1(:)/m
+end subroutine nharmonic_evolution
 
-  write(file_unit,'(900(1pe18.4))') t, (real(spectrum(i)), imag(spectrum(i)), i=nh_min, nh_max)
 
-end subroutine mode_evolution6
 
 subroutine mode_evolution7(t, s, m, n, file_unit) 
   use constants, only: p_
@@ -12655,19 +12257,19 @@ contains
     use constants,only:twopi
     use mpi
     implicit none
-    integer,intent(in)::kt
-    real(p_),intent(in):: a(:,:)
-    character(len=*),intent(in)::partial_file_name
-    integer:: itor,ipol,j,ierr,m,n 
-    real(p_):: my_a_xz_plane(size(a,2)),a_xz_plane(size(a,2),0:numprocs/ntube-1)
-    real(p_)::my_theta
-    character(100)::full_file_name
-    integer:: u !file unit number
+    integer, intent(in) :: kt
+    real(p_), intent(in) :: a(:,:)
+    character(len=*), intent(in) :: partial_file_name
+    integer :: itor, ipol, j, ierr, m, n 
+    real(p_) :: my_a_xz_plane(size(a,2)),a_xz_plane(size(a,2),0:numprocs/ntube-1)
+    real(p_) :: my_theta
+    character(100) :: full_file_name
+    integer :: u !file unit number
 
     m=size(a,1)
     n=size(a,2)
 
-    itor=mtor/2 !choose a alpha (i.e., y) grid
+    itor=mtor/2 !choose a alpha (i.e., y) gridpoint
     do j=1,n
        my_a_xz_plane(j)=a(itor,j)
     enddo
@@ -12680,7 +12282,7 @@ contains
        do ipol = 0, numprocs/ntube-1 !poloidal direction
           my_theta=-pi+ipol*dtheta2
           do j=1,n !radial direction
-             write(u,*) xgrid(j), my_theta,a_xz_plane(j,ipol)
+             write(u,*) xgrid(j), my_theta, a_xz_plane(j,ipol)
           enddo
           write(u,*)
        enddo
@@ -12731,13 +12333,53 @@ contains
                   & r_mc(ipol_eq,jrad), z_mc(ipol_eq,jrad), phi
           enddo
           write(u,*) 
-          !if(ipol.eq.GCLR_cut) write(u,*) !to inform gnuplot that this is a new data block, to aviud line connection between the following data and previous data
+          !if(ipol.eq.GCLR_cut) write(u,*) !to inform gnuplot that this is a new data block
        enddo
        close(u)
     endif
   end subroutine mode_structure_in_yz_plane
 
 
+  subroutine nharmonics_in_poloidal_plane(kt, a, str)
+    use constants, only: p_, one, zero, pi
+    use domain_decomposition, only: dtheta2, myid, tube_comm, multi_eq_cells
+    use control_parameters, only: nh_min, nh_max
+    use magnetic_coordinates, only: mtor, nrad, nz=>mpol2, pfn, tfn, r=>r_mc, z=>z_mc
+    use mpi
+    implicit none
+    integer, intent(in) :: kt
+    character(*), intent(in) :: str
+    complex(p_), intent(in) :: a(0:mtor-1, 1:nrad-2)
+    complex(p_), allocatable :: atmp(:,:), atmp0(:,:,:)
+    character(len=100) :: file_name
+    real(p_) :: theta
+    integer :: j, i, ieq, nh, ierr, u
+
+    allocate(atmp(0:mtor-1, nrad), source=(zero,zero))    
+    atmp(:, 2:nrad-1) = a(:,:)
+    allocate(atmp0(0:mtor-1, nrad, 0:nz-1))
+    
+    call MPI_gather(atmp, mtor*nrad, MPI_complex16, &
+         & atmp0, mtor*nrad, MPI_complex16, 0, tube_COMM, ierr)
+
+    if(myid == 0) then
+       do nh = nh_min, nh_max
+          file_name='ms/poloidal_plane_txxxxxx_nhxxx'//str
+          write(file_name(20:25),'(i6.6)') kt
+          write(file_name(29:31),'(i3.3)') nh
+          open(newunit=u, file=file_name)
+          do j = 1, nrad
+             do i = 0, nz-1
+                ieq = 1 + i*multi_eq_cells
+                theta = -pi + i*dtheta2
+                write(u,'(19ES16.5E3)') r(ieq, j), z(ieq, j), 2*abs(atmp0(nh, j, i))/mtor, pfn(j), theta, tfn(j)
+             enddo
+          enddo
+          close(u)
+       enddo
+    endif
+  end subroutine nharmonics_in_poloidal_plane
+  
   subroutine mode_structure_in_poloidal_plane(kt, a, str)
     use constants, only: p_, one
     use domain_decomposition, only: theta_start, dtheta2
@@ -12745,7 +12387,7 @@ contains
     integer, intent(in) :: kt
     character(*), intent(in) :: str
     real(p_), intent(in) :: a(:, :, :)
-    integer, parameter :: nz = 40 !along field line
+    integer, parameter :: nz = 20 !along field line
     real(p_) :: theta(0:nz-1), c
     real(p_) :: perturb(size(a,1), size(a,2), 0:nz-1)
     real(p_) :: a0(size(a,1), size(a,2), 0:nz-1), a1(size(a,1),size(a,2), 0:nz-1)
@@ -12801,8 +12443,8 @@ contains
     !choose a cylindrical toroidal angle, for which the mode structure is computed
     phi = 0.5_p_*twopi/nsegment
 
-    do j = 1, nx !radial
-       do i = 0, nz-1 !local theta range
+    do j = 1, nx ! radial
+       do i = 0, nz-1 ! local theta range
           call linear_1d_interpolate(mpol, zgrid, tor_shift_mc(:,j), theta(i), tor_shift)
           alpha = phi - tor_shift ! alpha of the fixed phi
           call shift_toroidal(alpha, toroidal_range)
@@ -12976,6 +12618,458 @@ subroutine visualize_grid()
 end subroutine visualize_grid
 
 
+subroutine field_lines_analyse()
+  use constants,only:p_
+  use constants,only: two
+  use radial_module,only: z_axis
+  implicit none
+  
+  integer:: n_tor_loop,max_npt_along_field_line,krad !used in field line tracing module
+!  namelist /field_line_tracing_nl/  n_tor_loop,max_npt_along_field_line,krad
+  real(p_),allocatable:: r_start(:),z_start(:),phi_start(:) !starting point of field lines
+  real(p_),allocatable:: r_poincare(:,:),z_poincare(:,:),phi_poincare(:,:) !pointcare points
+  integer:: j,k
+  integer,allocatable::nloop_actual(:)
+
+n_tor_loop=10
+max_npt_along_field_line=8000
+krad=1
+
+  
+!!$  open(31,file='input.nmlt')
+!!$  read(31,field_line_tracing_nl)
+!!$  close(31)
+!!$  write(*,field_line_tracing_nl)
+
+  allocate(r_start(krad))
+  allocate(z_start(krad))
+  allocate(phi_start(krad))
+  allocate(r_poincare(n_tor_loop+1,krad))
+  allocate(z_poincare(n_tor_loop+1,krad))
+  allocate(phi_poincare(n_tor_loop+1,krad))
+  allocate(nloop_actual(krad))
+
+!  !$omp parallel do
+  do k=1,krad
+     r_start(k)=2.15_p_+(k-1)*0.15d0/(20-1)
+     z_start(k)=z_axis
+     phi_start(k)=0._p_
+     call field_line_tracing(r_start(k),z_start(k),phi_start(k), max_npt_along_field_line,n_tor_loop,&
+          & r_Poincare(:,k),z_Poincare(:,k),phi_Poincare(:,k),nloop_actual(k))
+  enddo
+!  !$omp end parallel do
+
+  open(26,file='poincare.txt')
+  do k=1,krad
+     do j=1,nloop_actual(k)
+        write(26,*) r_Poincare(j,k),z_Poincare(j,k),phi_Poincare(j,k)
+     enddo
+     write(26,*)
+     write(26,*)
+  enddo
+  close(26)
+
+!!$  do k=1,krad
+!!$     call draw_magnetic_surface(r_start(k),z_start(k),'ref_field_line.txt') !draw the magnetic surface which passes through (r0,z0)
+!!$  enddo
+
+
+end subroutine field_lines_analyse
+
+
+
+subroutine field_line_tracing(r0,z0,phi0,npt,n_tor_loop,r_poincare,z_poincare,phi_poincare,nloop_actual)
+  !given coordinates (R,Z,phi), this subroutine follows the field lines passing through this point until it has finish n_tor_loop toroidal loop or exceeds the specifed maximum number of points along the field-line, npt. This subroutine also calculates the safety factor of the field-line found.
+  use constants,only:p_,two,twopi,one_half
+  use boundary,only: np_lcfs,x_lcfs,z_lcfs,nlim,rlim,zlim !use to check whether field line touch the boundary
+ use magnetic_field, only : br,bz,bphi
+ implicit none
+
+  real(p_),intent(in):: r0,z0,phi0
+  integer,intent(in)::npt,n_tor_loop
+  real(p_):: r(npt),z(npt),phi(npt)
+  real(p_),intent(out):: r_poincare(n_tor_loop+1),z_poincare(n_tor_loop+1),phi_poincare(n_tor_loop+1)
+  integer,intent(out):: nloop_actual
+  real(p_),parameter:: step=1d-3 !meter, trial of dr or dz step
+  real(p_):: brval,bzval,bphival,bpolval,dr,dz,dphi
+  
+  real(p_):: r_mid,z_mid,dl_pol,qval
+  logical:: loss
+  integer:: j,k,jj
+
+  k=1 !Poincare points
+  r_poincare(k)=r0 !Poincare points
+  z_poincare(k)=z0
+  phi_poincare(k)=phi0
+
+  r(1)=r0
+  z(1)=z0
+  phi(1)=phi0
+
+  loss=.false.
+  do j=1,npt-1
+     !2nd Runge-Kutta
+     brval=    br(r(j),z(j))
+     bzval=    bz(r(j),z(j))
+     bphival=bphi(r(j),z(j))
+     bpolval=sqrt(brval**2+bzval**2)
+
+     if(abs(bzval).lt.abs(brval)) then
+        dr=step*one_half
+        if(brval.lt.0._p_) dr=-step*one_half
+        dz=bzval/brval*dr
+     else
+        dz=step*one_half
+        if(bzval.lt.0._p_) dz=-step*one_half
+        dr=brval/bzval*dz
+     endif
+
+     dl_pol=sqrt(dr**2+dz**2)
+     dphi=bphival/bpolval*dl_pol/r(j)
+
+     !first step:
+     r_mid=r(j)+dr
+     z_mid=z(j)+dz
+     brval=    br(r_mid,z_mid)
+     bzval=    bz(r_mid,z_mid)
+     bphival=bphi(r_mid,z_mid)
+     bpolval=sqrt(brval**2+bzval**2)
+
+
+     if(abs(bzval).lt.abs(brval)) then
+        dr=step
+        if(brval.lt.0._p_) dr=-step
+        dz=bzval/brval*dr
+     else
+        dz=step
+        if(bzval.lt.0._p_) dz=-step
+        dr=brval/bzval*dz
+     endif
+
+     dl_pol=sqrt(dr**2+dz**2)
+     dphi=bphival/(bpolval*r_mid)*dl_pol
+
+     r(j+1)=r(j)+dr
+     z(j+1)=z(j)+dz
+     phi(j+1)=phi(j)+dphi
+
+     call  check_whether_field_line_touch_boundary(r(j+1),z(j+1),phi(j+1),x_lcfs,z_lcfs,np_lcfs,loss)
+     if (loss.eqv. .true.) exit
+
+     if(abs(floor(abs(phi(j)-phi0)/twopi)-floor(abs(phi(j+1)-phi0)/twopi)).eq.1) then ! finish one toroidal turn
+        !   write(*,*) 'j=',j,'k=',k, phi(j),phi(j+1)
+        k=k+1
+        r_poincare(k)=(r(j)+r(j+1))/two
+        z_poincare(k)=(z(j)+z(j+1))/two
+        phi_poincare(k)=((phi(j)+phi(j+1))/two)/twopi
+     endif
+
+     if(abs(phi0-phi(j+1))/twopi.ge.n_tor_loop) exit
+
+  enddo
+
+ if(j.eq.npt) then
+     open(76,file='bad_line.txt')
+     do jj=1,j-1
+     write(76,*) r(jj),z(jj),phi(jj)
+     enddo
+     close(76)
+     call safety_factor_a_field_line(r,z,phi,j,qval)
+     call draw_magnetic_surface(r0,z0,'ref_field_line.txt') !draw the magnetic surface which passes through (r0,z0)
+     stop 'max number of tracing steps of field line is exceeded before achiving the specified number of toroidal loop'
+endif
+
+  nloop_actual=k
+  write(*,*) 'nloop_actual=',nloop_actual, 'actual step along field line=',j
+
+  call safety_factor_a_field_line(r,z,phi,j+1,qval)
+
+!!$  open(76,file='field_line.txt')
+!!$  do jj=1,j+1
+!!$     write(76,*) r(jj),z(jj),phi(jj)
+!!$  enddo
+!!$  close(76)
+
+
+!call check_field_line_in_field_aligned_coordinates(r,z,phi,j,qval)
+
+end subroutine field_line_tracing
+
+
+subroutine field_line_tracing_simplified(r0,z0,phi0) !see the comments in subroutine "field_line_tracing"
+  use constants,only:p_,two,twopi,one_half
+use magnetic_field, only :  br,bz,bphi
+  implicit none
+  real(p_),intent(in):: r0,z0,phi0
+  integer,parameter::npt=3000
+  real(p_):: r(npt),z(npt),phi(npt)
+  real(p_),parameter:: step=1d-3 !meter, trial of dr or dz step
+  real(p_):: brval,bzval,bphival,bpolval,dr,dz,dphi
+  real(p_):: r_mid,z_mid,dl_pol,qval
+  integer:: j,u
+
+  r(1)=r0
+  z(1)=z0
+  phi(1)=phi0
+
+  do j=1,npt-1 !2nd Runge-Kutta
+     brval=    br(r(j),z(j))
+     bzval=    bz(r(j),z(j))
+     bphival=bphi(r(j),z(j))
+     bpolval=sqrt(brval**2+bzval**2)
+
+     if(abs(bzval).lt.abs(brval)) then
+        dr=step*one_half
+        if(brval.lt.0._p_) dr=-step*one_half
+        dz=bzval/brval*dr
+     else
+        dz=step*one_half
+        if(bzval.lt.0._p_) dz=-step*one_half
+        dr=brval/bzval*dz
+     endif
+
+     dl_pol=sqrt(dr**2+dz**2)
+     dphi=bphival/bpolval*dl_pol/r(j)
+
+     !first step of 2nd Runge-Kutta:
+     r_mid=r(j)+dr
+     z_mid=z(j)+dz
+     brval=    br(r_mid,z_mid)
+     bzval=    bz(r_mid,z_mid)
+     bphival=bphi(r_mid,z_mid)
+     bpolval=sqrt(brval**2+bzval**2)
+
+     if(abs(bzval).lt.abs(brval)) then
+        dr=step
+        if(brval.lt.0._p_) dr=-step
+        dz=bzval/brval*dr
+     else
+        dz=step
+        if(bzval.lt.0._p_) dz=-step
+        dr=brval/bzval*dz
+     endif
+
+     dl_pol=sqrt(dr**2+dz**2)
+     dphi=bphival/(bpolval*r_mid)*dl_pol
+
+     r(j+1)=r(j)+dr
+     z(j+1)=z(j)+dz
+     phi(j+1)=phi(j)+dphi
+
+  enddo
+
+  open(newunit=u,file='field_line')
+  do j=1,npt
+     write(u,*) phi(j),z(j),r(j)
+  enddo
+  close(u)
+end subroutine field_line_tracing_simplified
+
+
+subroutine field_line_tracing0(r0,z0,phi0, npt, dphi, r,z,phi)
+  use constants,only : p_, two, twopi, one_half
+  use magnetic_field, only :  br, bz, bphi
+  implicit none
+  real(p_),intent(in) :: r0,z0,phi0
+  real(p_),intent(in) :: dphi
+  integer, intent(in) :: npt
+  real(p_), intent(out) :: r(npt),z(npt),phi(npt)
+  real(p_) :: brval,bzval,bphival
+  real(p_) :: dr, dz, r_mid, z_mid
+  integer :: j
+
+  r(1)=r0
+  z(1)=z0
+  phi(1)=phi0
+
+  do j=1,npt-1 !2nd Runge-Kutta
+     brval=    br(r(j),z(j))
+     bzval=    bz(r(j),z(j))
+     bphival=bphi(r(j),z(j))
+
+     dr= brval/bphival*(r(j)*dphi)
+     dz= bzval/bphival*(r(j)*dphi)
+
+     r_mid=r(j)+dr*one_half !first step of 2nd Runge-Kutta
+     z_mid=z(j)+dz*one_half
+     brval=    br(r_mid,z_mid)
+     bzval=    bz(r_mid,z_mid)
+     bphival=bphi(r_mid,z_mid)
+
+     dr= brval/bphival*(r_mid*dphi)
+     dz= bzval/bphival*(r_mid*dphi)
+    
+     r(j+1)=r(j)+dr !second step of 2nd Runge-Kutta
+     z(j+1)=z(j)+dz
+     phi(j+1)=phi(j)+dphi
+  enddo
+end subroutine field_line_tracing0
+
+subroutine check_field_line_in_field_aligned_coordinates(r,z,phi,npt,qval)
+  use constants, only: p_, two,twopi
+  use radial_module,only:z_axis
+  use mapping_module,only: nx_mapping ,j0,r_cyl,tor_shift_b
+  use map_to_mc, only : interpolate_from_cylindrical_to_magnetic_coordinates
+  use magnetic_field, only : psi_func, pfn_func, radcor_as_func_of_pfn
+  implicit none
+  integer,intent(in):: npt
+  real(p_),intent(in):: r(npt),z(npt),phi(npt),qval
+  real(p_):: radcor(npt),theta(npt),alpha(npt),tor_shift(npt)
+  real(p_)::x1,x2,y1,y2,z1,z2,dx,dy,dz,dl(npt)
+  real(p_):: sum=0._p_,real_shift,total_shift,tmp_array(nx_mapping)
+  integer:: j,kk
+
+
+
+  do j=1,npt
+     radcor(j)=radcor_as_func_of_pfn(pfn_func(r(j),z(j))) !get radial coordinate
+     call interpolate_from_cylindrical_to_magnetic_coordinates(r(j),z(j),theta(j),tor_shift(j))
+  enddo
+
+  dl(1)=0._p_
+  do j=2,npt
+     x1=r(j-1)*cos(phi(j-1))
+     x2=r(j)*cos(phi(j))
+     y1=r(j-1)*sin(phi(j-1))
+     y2=r(j)*sin(phi(j))
+     z1=z(j-1)
+     z2=z(j)
+     dx=x2-x1
+     dy=y2-y1
+     dz=z2-z1
+     dl(j)=dl(j-1)+sqrt(dx*dx+dy*dy+dz*dz)
+  enddo
+
+  open(11,file='field_line_in_field_aligned_co.txt')
+  do j=2,npt
+
+!!$     if(abs(theta(j)-theta(j-1)) .ge. twopi*0.9) then !indecate finishing one poloidal loop
+!!$        !total_shift=tor_shift(j)*(z_axis-z(j-1))/(z(j)-z_axis)+tor_shift(j-1)
+!!$        !total_shift=qval*twopi*1.0004
+!!$        !total_shift=2.35227*twopi
+!!$        do kk=1,nx_mapping
+!!$           tmp_array(kk)= tor_shift_b(kk,j0)
+!!$        enddo
+!!$        call linear_1d_interpolate(nx_mapping,r_cyl,tmp_array,r(j),total_shift)
+!!$        sum=sum+total_shift
+!!$     endif
+!!$     alpha(j)=phi(j)-(tor_shift(j)+sum)
+   call accumulate_tor_shift(theta(j-1),theta(j),r(j),tor_shift(j),real_shift)
+    alpha(j)=phi(j)-real_shift 
+     write(11,*) dl(j),radcor(j),theta(j),alpha(j), tor_shift(j), phi(j),r(j),z(j)
+  enddo
+  close(11)
+end subroutine check_field_line_in_field_aligned_coordinates
+
+
+subroutine safety_factor_a_field_line(r,z,phi,npt,qval)
+  !given a field line, calculate its safety factor
+  use constants, only: p_, two, twopi
+  use magnetic_field, only : psi_func
+  use magnetic_field, only : qfunc0
+  implicit none
+  integer, intent(in) :: npt
+  real(p_), intent(in) :: r(npt), z(npt), phi(npt)
+  real(p_), intent(out) :: qval
+  real(p_) :: phi_old
+  integer :: j, npass
+
+  npass = 0
+  do j=1,npt-1
+     if(z(j)*z(j+1).lt.0) then !indicates one midplane-crossing
+        npass = npass+1
+        if(npass == 1) phi_old = (phi(j)+phi(j+1))/two
+     endif
+     if(npass == 3) then !indicates that the line has finished one poloidal period
+        qval=abs(phi_old-phi(j))/twopi
+        write(*,*) 'safety factor of field line passing (r,z)',r(1),z(1),'is', qval,&
+             & 'q value specified in gfile =', qfunc0(psi_func(r(1),z(1)))
+        exit
+     endif
+  enddo
+
+  write(*,*) 'toroidal loops the field line travels=',(phi(npt)-phi(1))/twopi
+
+end subroutine safety_factor_a_field_line
+
+
+subroutine check_whether_field_line_touch_boundary(r,z,phi,rlim,zlim,nlim,loss)
+  use constants,only:p_
+  use math, only : pnpoly
+!  use boundary,only: nlim,rlim,zlim 
+  implicit none
+  real(p_),intent(in):: r,z,phi
+  integer,intent(in):: nlim
+  real(p_),intent(out):: rlim(nlim),zlim(nlim)
+  logical,intent(out):: loss
+  integer:: inout
+
+  call PNPOLY(r,z,rlim,zlim,nlim,INOUT) !find out wheter the point (r,z) is within the limiter
+  !        if (inout.eq.1) then !within the LCFS
+  if (inout.eq.-1 .or.inout.eq.0) then !the particle is out of the limiter
+     write(*,*) '==>This field line touches the limiter at (R,Z,phi)=', r,z,phi
+     loss=.true.
+     !stop
+  else
+     loss=.false.
+  endif
+
+end subroutine
+
+
+  subroutine accumulate_tor_shift(theta_old,theta_new,r,tor_shift,real_shift) !,kt)
+    use constants,only:p_
+    use constants,only: twopi
+    use mapping_module,only: nx_mapping,tor_shift_b,j0,r_cyl
+  use interpolate_module,only: linear_1d_interpolate
+    implicit none
+    real(p_),intent(in):: theta_old,theta_new,r,tor_shift
+    real(p_),intent(out)::real_shift
+    real(p_),save::sum=0._p_
+    real(p_):: tmp_array(nx_mapping),twopi_q
+!integer,intent(in):: kt
+    integer::kk
+    if(abs(theta_old-theta_new) .ge. twopi*0.9) then !indicate finishing one poloidal loop
+       do kk=1,nx_mapping
+          tmp_array(kk)= tor_shift_b(kk,j0)
+       enddo
+       call linear_1d_interpolate(nx_mapping,r_cyl,tmp_array,r,twopi_q) !the result is twopi*q, I use this instead of directly using twopi*q because the latter may cause some cancellation problem
+       sum=sum+twopi_q*sign(1._p_,theta_old-theta_new)
+!write(*,*) 'sum=',sum, 'twopi_q=',twopi_q,'tor_shift=',tor_shift,'sum+tor_shift/ real_shift',sum+tor_shift, 'kt=',kt
+    endif
+
+    real_shift=sum+tor_shift
+
+
+    !real_shift=sum-(twopi_q-tor_shift)
+  end subroutine accumulate_tor_shift
+
+
+  subroutine draw_magnetic_surface(r0,z0,filename) !draw the magnetic surface which passes through (r0,z0)
+  use constants,only:p_
+  use constants,only:zero,one,two,twopi
+  use boundary,only:np_lcfs,x_lcfs,z_lcfs
+  use radial_module,only: r_axis,z_axis
+  use contour_mod,only : find_contour
+  use magnetic_field, only : psi_func
+  implicit none
+
+  real(p_),intent(in):: r0,z0
+  character(*),intent(in)::  filename
+  real(p_):: psival
+  real(p_):: x_contour(np_lcfs),z_contour(np_lcfs)
+  integer:: i,u
+  
+  psival=psi_func(r0,z0)
+
+  call find_contour(psival,x_contour,z_contour)
+
+  open(newunit=u,file=filename)
+  do i=1,np_lcfs
+     write(u,*) x_contour(i),z_contour(i)
+  enddo
+  close(u)
+end subroutine draw_magnetic_surface
 module restart
 contains
   subroutine write_data_for_restarting(kend)
@@ -13067,8 +13161,8 @@ program main
   use drift, only: compute_drift
   use gk_trajectory_pusher, only: push_gc !, count_lost_markers_gk
   use gk_weight_pusher, only: push_gk_weight
-  use perturbation_field, only: allocate_field_matrix, potential, phix, phiy, phiz, &
-       &  apara, apara_h, apara_s, apara_s_old, ax, ay, az, ahx, ahy, ahz
+  use perturbation_field, only: allocate_field_matrix, potential, phix, phiy, phiz, phi_dft, &
+       &  apara, apara_h, apara_s, apara_s_old, ax, ay, az, ahx, ahy, ahz, apara_dft
   use domain_decomposition, only: myid,numprocs, nvp, tube_comm,grid_comm,ntube,gclr,tclr, &
        & dtheta2,theta_start,my_right,my_left, my_right2, my_left2, multi_eq_cells, ipol_eq, dvol
   use misc, only: calculate_dvol
@@ -13076,8 +13170,8 @@ program main
   use fk_particle_coordinates_transform_module, only: compute_particle_magnetic_coordinates, &
        & clean_up_lost_markers_fk, count_lost_markers_fk
   use mode_structure
-  use diagnosis_mod, only: report, mode_evolution, mode_evolution6, bperp_perturbation, &
-       & compute_particle_and_heat_flux
+  use diagnosis_mod, only: report, mode_evolution, nharmonic_evolution, bperp_perturbation, &
+       & compute_particle_and_heat_flux, compute_entropy
   use deposit_fk_module, only: deposit_fk
   use deposit_gk_module, only: deposit_gk
   use poisson, only: prepare_poisson_matrix, solve_poisson
@@ -13127,7 +13221,8 @@ program main
   endif
   mpol2 = numprocs/ntube !poloidal grids for perturbed field
   if(mod(mpol-1, mpol2) .ne. 0) then
-     write(*,*) 'error: Mod(mpol-1, numprocs/ntube) must be zero, please adjust poloidal gridpoint number in the input namelist'
+     write(*,*) 'Error: Mod(mpol-1, numprocs/ntube) must be zero', &
+          & 'Please adjust poloidal gridpoint number, mpol, in the input namelist'
      goto 1234 !end the job
   endif
   dtheta2=twopi/mpol2 !the poloidal angle spacing of grids for perturbations
@@ -13152,7 +13247,7 @@ program main
   !dtheta is the poloidal angle spacing of the equilibrium grids,
   multi_eq_cells = NINT(dtheta2/dtheta)
   !equilibrium poloidal index of the present MPI processes
-  ipol_eq = 1+nint((theta_start-zgrid(1))/dtheta)
+  ipol_eq = 1 + nint((theta_start-zgrid(1))/dtheta)
   if(myid==0) write(*,*) 'multi_eq_cells=', multi_eq_cells
   call calculate_dvol(multi_eq_cells, dvol)
   call mapping_table_for_cylindrical_to_magnetic_coordinates()
@@ -13301,9 +13396,13 @@ program main
      call gyro_ring(ns, lost_gc(:,ns), xgc(:,ns), ygc(:,ns), zgc(:,ns), &
           & mu_gk(:,ns), x_ring(:,:,ns), y_ring(:,:,ns), z_ring(:,:,ns)) 
   enddo
-
+  
+  if(myid==0) call system('mkdir -p ms') ! folder ms is used to store mode structure files
+  call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+  
   do kt = kstart+1, kend ! time-advancing
-     if(myid==0 .and. mod(kt-1, 100)==0) write(*,*) 'time-step No.', kt
+     if(myid==numprocs/2 .and. mod(kt-1, 100)==0) write(*,*) 'time-step, phi(mtor/2,nrad/2) =', &
+          & kt, potential(mtor/2, nrad/2,1)
      !---- first step of the 2nd order Runge-Kutta-------
      if(fk_switch==1) then
         call fk_push_first_step()
@@ -13319,7 +13418,7 @@ program main
              & xdrift0, zdrift0, ydrift0, mirror_force, zdrift00, xdrift1, zdrift1, ydrift1)
         if(mod(kt-1, 100)==0)  call compute_particle_and_heat_flux((kt-1)*dt_second, ns, lost_gc(:, ns), &
              & mu_gk(:,ns), vpar_gk(:,ns), w_gk(:,ns), xgc(:,ns), zgc(:,ns), xdrift1(:), xdrift0(:))
-
+        if(mod(kt-1, 100)==0) call compute_entropy((kt-1)*dt_second, ns, lost_gc(:, ns), w_gk(:,ns), xgc(:,ns), v_gk(:,ns))
         call push_gk_weight(ns, lost_gc(:,ns), one_half*dtao_gk(ns), xgc(:,ns),&
              & vpar_gk(:,ns), v_gk(:,ns), xdrift0, ydrift0, zdrift0, zdrift00, &
              & mirror_force, xdrift1, ydrift1, zdrift1, &
@@ -13338,11 +13437,11 @@ program main
              & density_left, density_right, jpar_left, jpar_right)
      enddo
 
-     call solve_poisson(density_left, density_right, potential, phix, phiy, phiz)
+     call solve_poisson(density_left, density_right, potential, phix, phiy, phiz, phi_dft)
      if(adiabatic_electrons .eqv. .false.) then ! EM case, so Ampere's law needs to be solved.
         apara_s_old = apara_s
         call apara_s_evolution(apara_s_old(:,:,1), apara_s(:,:,1), phiz, 0.5_p_*dtao_main)
-        call solve_ampere(1, jpar_left, jpar_right, apara_s, apara_h, apara, ax, ay, az, ahx, ahy, ahz)
+        call solve_ampere(1, jpar_left, jpar_right, apara_s, apara_h, apara, ax, ay, az, ahx, ahy, ahz, apara_dft)
      endif
      !---------------second step of 2nd order Runge-Kutta------------------------
      if(fk_switch==1) then
@@ -13377,32 +13476,34 @@ program main
         !if(mod(kt,1000)==0) call count_lost_markers_gk(ns)
      enddo
 
-     call solve_poisson(density_left, density_right, potential, phix, phiy, phiz)
+     call solve_poisson(density_left, density_right, potential, phix, phiy, phiz, phi_dft)
      if(adiabatic_electrons .eqv. .false.) then
         call apara_s_evolution(apara_s_old(:,:,1), apara_s(:,:,1), phiz, dtao_main)
-        call solve_ampere(2, jpar_left, jpar_right, apara_s, apara_h, apara, ax, ay, az, ahx, ahy, ahz)
+        call solve_ampere(2, jpar_left, jpar_right, apara_s, apara_h, apara, ax, ay, az, ahx, ahy, ahz, apara_dft)
         call apara_resplit_and_weight_pullback(w_gk, apara_s, apara_h, ahx, ahy, ahz) !at the end of each time-step
      endif
 
      ! Particle pusher and field solver finish one full time step. The following are diagnosis:
-     if(myid==id_writing_evolution .and. mod(kt, 50)==0) then
+     if(myid == id_writing_evolution .and. mod(kt-1, 10)==0) then
         call mode_evolution(kt*dt_second, potential(:,:,1), mtor, nrad, file_unit1)
         call mode_evolution(kt*dt_second, apara(:,:,1),     mtor, nrad, file_unit2)
-        call mode_evolution6(kt*dt_second, potential(:,:,1), mtor, nrad, file_unit3)
-        call mode_evolution6(kt*dt_second, apara(:,:,1),     mtor, nrad, file_unit4) 
+        call nharmonic_evolution(kt*dt_second, phi_dft, file_unit3)
+        call nharmonic_evolution(kt*dt_second, apara_dft, file_unit4) 
      endif
 
-     if(myid==0 .and. mod(kt, 50)==0) call bperp_perturbation(kt*dt_second, file_unit5) 
+     if(myid==0 .and. mod(kt-1, 100)==0) call bperp_perturbation(kt*dt_second, file_unit5) 
 
-     if(TCLR==0 .and. mod((kt-1), iplot_mode_structure)==0) then
-        call mode_structure_in_xy_plane(kt, GCLR, potential(:,:,1), 'Phi')
-        call mode_structure_in_xy_plane(kt, GCLR, apara(:,:,1), 'Apara')
-        call mode_structure_in_xz_plane(kt, potential(:,:,1), 'Phi')
-        call mode_structure_in_xz_plane(kt, apara(:,:,1), 'Apara')
-        call mode_structure_in_yz_plane(kt, potential(:,:,:), 'Phi')
-        call mode_structure_in_yz_plane(kt, apara(:,:,:), 'Apara')
+     if(TCLR==0 .and. kt>20000 .and. mod((kt-1), iplot_mode_structure)==0) then
+        ! call mode_structure_in_xy_plane(kt, GCLR, potential(:,:,1), 'Phi')
+        ! call mode_structure_in_xy_plane(kt, GCLR, apara(:,:,1), 'Apara')
+        ! call mode_structure_in_xz_plane(kt, potential(:,:,1), 'Phi')
+        ! call mode_structure_in_xz_plane(kt, apara(:,:,1), 'Apara')
+        ! call mode_structure_in_yz_plane(kt, potential(:,:,:), 'Phi')
+        ! call mode_structure_in_yz_plane(kt, apara(:,:,:), 'Apara')
         call mode_structure_in_poloidal_plane(kt, potential(:,:, :), 'Phi')
         call mode_structure_in_poloidal_plane(kt, apara(:,:, :), 'Apara')
+        ! call nharmonics_in_poloidal_plane(kt, phi_dft, 'Phi')
+        ! call nharmonics_in_poloidal_plane(kt, apara_dft, 'Apara')
      endif
 
   enddo !-----------time advancing loop---------
