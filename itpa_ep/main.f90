@@ -26,7 +26,7 @@ module constants
 end module constants
 
 
-module magnetic_parameters !Cyclone DIII-D base case parameter set
+module magnetic_parameters 
   use precision,only:p_
   implicit none
   !real(p_),parameter:: a=0.60_p_ !minor radius in meter
@@ -49,13 +49,12 @@ subroutine calculate_equilibrium()
   use magnetic_parameters,only:r0,a,g0, minor_r0
   implicit none
   integer,parameter:: nx=257, nz=257
-  integer,parameter:: np_lcfs=130, n=nx
+  integer,parameter:: np_lcfs = 257, n=nx
   real(p_):: psi_2d(nx,nz)
   real(p_):: r_1d(nx),z_1d(nz)
   real(p_):: r_lcfs(np_lcfs),z_lcfs(np_lcfs)
   real(p_):: f(n), ffp(n), q(n), p(n), pp(n), pfn(n) !on uniform poloidal flux grid
   integer:: i,j,u
-  real(p_), parameter :: ti0 =2.14, ni0=4.66e19
   real(p_)::  rleft,  zmid,  rdim,  zdim !specify the rectangular region for which the value of psi_2d is specified
   real(p_):: psi_axis,psi_bdry,xmaxis,zmaxis,psival
   real(p_):: minor_r ,theta !magnetic surface coordinates
@@ -114,8 +113,6 @@ subroutine calculate_equilibrium()
      pfn(j) = (psival - psi_axis)/(psi_bdry -psi_axis)
      minor_r = rtbis(func0, epsilon*0.01_p_, a*1.01_p_, psival, xacc) !find the minor_r where poloida_flux=psival
      q(j) = q_func(minor_r) !q array corresponding to uniform poloidal flux array
-     !Ti(j)= ti0*exp(-kappa_ti*a*0.3*tanh((minor_r-minor_r0)/(0.3*a)))
-     !ni(j)= ni0*exp(-kappa_ni*a*0.3*tanh((minor_r-minor_r0)/(0.3*a)))
      Ti(j)= 1.0d0
      ni(j)= 2.0d19
 
@@ -177,7 +174,7 @@ subroutine write_gfile(psi,nx,nz,rleft,zmid,xdim,zdim,psimax,psi_lcfs,xmaxis,zma
   ipestg=22 !arbitrary number
   dumaraya5=0;dumarayb5=0 !arbitrary number
   neq=111
-  open(neq,file='gfile_itpa_ep')
+  open(neq,file='gfile_itpa_ep257x257')
   write (neq, '(6a8, 3i4)') (ntitle(i), i=1,6), ipestg, nx, nz
   write (neq,300) xdim, zdim, rcenter, rleft, zmid
   write (neq,300) xmaxis, zmaxis, psimax, psi_lcfs, btorus

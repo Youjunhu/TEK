@@ -1,49 +1,49 @@
   &magnetic_configuration
-  gfile_name = 'itpa_ep/gfile_itpa_ep'
+  gfile_name = 'itpa_ep/gfile_itpa_ep513x513'
   reverse_tf = .false. 
   reverse_ip = .false.
   /
 
   &control_nmlt
-  pfn_inner = 0.05
-  pfn_bdry = 0.9
+  pfn_inner = 0.02
+  pfn_bdry = 0.8
   nrad = 258
-  mtor = 64 !must be an even number (required by the FFT algorithm I used)
+  mtor = 16 !must be an even number (required by the FFT algorithm I used)
   mpol = 129 !equilibrium poloidal gridpoint number, be odd, and (mpol-1)/(numproc/ntube) must be an integer
   ntube = 16
-  !poloidal_angle_type='straight-field-line'
-  poloidal_angle_type='equal-arc'
+  poloidal_angle_type='straight-field-line'
+  !poloidal_angle_type='equal-arc'
   !poloidal_angle_type = 'equal-volume'
   !poloidal_angle_type='Boozer'
-  nsegment = 6 !toroidal box is 1/nsegment of the full torus
+  nsegment = 3 !toroidal box is 1/nsegment of the full torus
   nh_min = 1  !non-negative
   nh_max = 1  !non-negative
   dt_omega_i_axis = 4.0d0 !time step size
   kstart = 0
-  kend = 60001
+  kend = 40001
   filter_radial = .false.
   ismooth = 0
   space_charge_switch = 0
   diagnosis = .false.
   iplot_mode_structure = 4000
-  store_restart_data = .true.
+  store_restart_data = .false.
   fk_switch = 0
   adiabatic_electrons = .false.
   nsm = 3 !number of gk species
   /
 
   &gk_nmlt !gyrokinetic species
-  mass_gk(:) = 1.6735575d-27  3.3435837768d-27  9.1093837d-31  !kg 
+  mass_gk(:) = 1.6735575d-27  3.3444946908181286-27  9.1093837d-31  !kg 
   charge_gk(:) = 1    1  -1 !in unit of elementary_charege
-  nm_gk_per_cell(:) = 40 40 80
+  nm_gk_per_cell(:) = 64 64 64
   gk_flr(:) = .true. .true. .false.
   density_file ="itpa_ep/ni.txt"  "itpa_ep/nf.txt"  "itpa_ep/ne.txt"
   density_unit = 1.d0 1.d0 1.d0 !value in m^(-3)
   density_radcor = "toroidal-flux-sqrt", "toroidal-flux-sqrt" "toroidal-flux-sqrt"
   temperature_file = "itpa_ep/ti.txt"  "itpa_ep/tfxxx.txt" "itpa_ep/te.txt"
-  temperature_unit = 1.6022d-16  1.6022d-16 1.6022d-16 !value in Joule
+  temperature_unit = 1.60217663d-16  1.60217663d-16 1.60217663d-16 !value in Joule
   temperature_radcor = "toroidal-flux-sqrt", "toroidal-flux-sqrt" "toroidal-flux-sqrt"
-  gk_spatial_loading_scheme = 2, 2, 2 !1=>uniform in (psi,theta,alpha) coordinates; 2=>uniform in real space
+  gk_spatial_loading_scheme = 1, 1, 1 !1=>uniform in (psi,theta,alpha) coordinates; 2=>uniform in real space
   gk_velocity_loading_scheme = 2, 2, 2
   gk_nonlinear = 0, 0, 0
   /

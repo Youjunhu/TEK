@@ -29,7 +29,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 
-name=tae18b
+name=tae15z38
 for i in  400
 do
   dir=${name}_${i}
