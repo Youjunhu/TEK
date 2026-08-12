@@ -142,9 +142,10 @@ create_tags:
 tarfile:
 	mkdir $(program_name)_version`date +"%Y-%m-%d"` && cp -r $(f90source) $(f77source) makefile input.nmlt $(program_name)_version`date +"%Y-%m-%d"` && tar -cf $(program_name)_version`date +"%Y-%m-%d"`.tar $(program_name)_version`date +"%Y-%m-%d"` && rm -r $(program_name)_version`date +"%Y-%m-%d"` 
 merge_to_one_file:
-	cat $(f90source) > $(program_name)_v`date +"%Y-%m-%d"`.f90
-compile_one_file:
-	$(COMPILER)  $(OPTION) $(program_name)_v`date +"%Y-%m-%d"`.f90  $(lapack_location) $(blas_location) $(fftw_include) $(fftw_lib) -lfftw3 -lm -o  $(program_name)
+	echo \!TEK version `date +"%Y-%m-%d"` > $(program_name)_in_one_file.f90
+	cat $(f90source) >> $(program_name)_in_one_file.f90
+compile_one_file: merge_to_one_file
+	$(COMPILER)  $(OPTION) $(program_name)_in_one_file.f90  $(lapack_location) $(blas_location) $(fftw_include) $(fftw_lib) -lfftw3 -lm -o  $(program_name)
 #sync_to_cluster:
 #	 make clean && rsync -avz --delete ./ yj@202.127.204.22:/scratch/yj/TEK
 to_cori:
