@@ -20,4 +20,3 @@ Documents about TEK: https://arxiv.org/abs/2608.06764
 
 More details can be found in my personal notes: https://youjunhu.github.io/research_notes/nonlinear_gyrokinetic_equation.pdf
 
-Let me know if you're interested in using TEK.
