@@ -43,12 +43,12 @@ contains
        vpar_new(k)  = vpar_old(k) + mirror_force(k)*dt
 
        ! Comment out the following if-structure if you do not want particle refilling:
-!!$       if ((x_new(k) > xupp) .or. (x_new(k) < xlow) ) then
-!!$          x_new(k) = x_old(k)
-!!$          z_new(k) = - z_old(k)
-!!$          y_new(k) = y_old(k) + 2*qfunc(x_old(k))*z_old(k)
-!!$          weight(k) = 0
-!!$        endif
+       ! if ((x_new(k) > xupp) .or. (x_new(k) < xlow) ) then
+       !    x_new(k) = x_old(k)
+       !    z_new(k) = - z_old(k)
+       !    y_new(k) = y_old(k) + 2*qfunc(x_old(k))*z_old(k)
+       !    weight(k) = 0
+       !  endif
 
        if ((z_new(k) .ge. pi) .or. (z_new(k) < -pi)) &
             & call shift_gc_theta_then_alpha(x_new(k), z_new(k), y_new(k))

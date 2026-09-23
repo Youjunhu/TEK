@@ -60,12 +60,12 @@ contains
   subroutine update_scalar_at_right_boundary(s) 
     !Every proc is response for one cell which has two boundaries.
     !Only the field on left-boundary is computed by the present proc.
-    !The field on the right-boundary is received from the neighbour proc. This subroutine handle this communication and the edge case for gclr = mpol2-1
+    !The field on the right-boundary is received from the neighbour proc. This subroutine handle this communication and the edge case for gclr = mpar-1
     !Note that the definition of cell here is different from the the definition of cell in PIC.
     !In PIC,the grids are the centers of the cells while here the grids are the boundaries of the cells
     use mpi
     use domain_decomposition, only: myid, GCLR, Tube_comm, my_left, my_right
-    use magnetic_coordinates, only : mpol2
+    use magnetic_coordinates, only : mpar
     real(p_), intent(inout) :: s(:,:,:)
     integer :: status(MPI_STATUS_SIZE), ierr, m, n
 
@@ -74,7 +74,7 @@ contains
     call MPI_Sendrecv(s(:,:,1),  m*n,  MPI_real8, my_left,  41, &
          &            s(:,:,2),  m*n,  MPI_real8, my_right, 41, Tube_COMM, status, ierr)
     !special treatment at theta cut, to handle the phi-grid mismatch
-    if(GCLR == mpol2-1) call connect_condition_across_theta_cut(s(:,:,2), 1)
+    if(GCLR == mpar-1) call connect_condition_across_theta_cut(s(:,:,2), 1)
 
   end subroutine update_scalar_at_right_boundary
 
@@ -86,7 +86,7 @@ contains
     ! The value on the right boundary is obtained by communicating with neighbour process.
     ! (Field value at right-boundary of the present cell is needed when pushing particle weights)
     use mpi
-    use magnetic_coordinates, only: m=>mtor, n=>nrad, mpol2
+    use magnetic_coordinates, only: m=>mtor, n=>nrad, mpar
     use domain_decomposition, only: myid, GCLR, Tube_comm, ntube, my_left, my_right
     real(p_), intent(inout) ::  ax(:,:,:), ay(:,:,:), az(:,:,:)
     integer :: status(MPI_STATUS_SIZE), ierr
@@ -100,7 +100,7 @@ contains
     call MPI_Sendrecv(az(:,:,1), m*n,  MPI_real8, my_left,  6, &
          &            az(:,:,2), m*n,  MPI_real8, my_right, 6, Tube_COMM,status,ierr)
 
-    if(GCLR == mpol2-1) then !special treatment at theta cut
+    if(GCLR == mpar-1) then !special treatment at theta cut
        call connect_condition_across_theta_cut(ax(:,:,2), direction=1)
        call connect_condition_across_theta_cut(ay(:,:,2), direction=1) 
        call connect_condition_across_theta_cut(az(:,:,2), direction=1) 
@@ -134,7 +134,7 @@ contains
     use mpi
     use perturbation_field,only: ef_cyl_r_left, ef_cyl_z_left, ef_cyl_phi_left !already known before entering this subroutine
     use perturbation_field,only: ef_cyl_r_right, ef_cyl_z_right, ef_cyl_phi_right !as output
-    use magnetic_coordinates,only: m=>mtor, n=>nrad, mpol2
+    use magnetic_coordinates,only: m=>mtor, n=>nrad, mpar
     use domain_decomposition,only: myid, GCLR,Tube_comm,ntube, my_left,my_right
 
     integer:: status(MPI_STATUS_SIZE),ierr
@@ -147,7 +147,7 @@ contains
     call MPI_Sendrecv(ef_cyl_phi_left, (m+1)*n,  MPI_real8, my_left,  6,&
          &            ef_cyl_phi_right,(m+1)*n,  MPI_real8, my_right, 6,Tube_COMM,status,ierr)
 
-    if(GCLR == mpol2-1) then !special treatment at theta cut
+    if(GCLR == mpar-1) then !special treatment at theta cut
        call connect_condition_across_theta_cut(ef_cyl_r_right, direction=1) 
        call connect_condition_across_theta_cut(ef_cyl_z_right, direction=1) 
        call connect_condition_across_theta_cut(ef_cyl_phi_right, direction=1) 
@@ -158,7 +158,7 @@ contains
   subroutine get_nearby_field_along_field_line(a, a_left, a_right, a_left2, a_right2)
     !get value of field on the two grids that are to the left/right of the present grid
     use constants, only: p_
-    use magnetic_coordinates, only: mpol2
+    use magnetic_coordinates, only: mpar
     use domain_decomposition, only: GCLR, TUBE_COMM, my_left, my_right, my_left2, my_right2
     use mpi
     implicit none
@@ -177,7 +177,7 @@ contains
          &            a_right, m*n, MPI_real8, my_right, 2,Tube_COMM, status,ierr)
 
 
-    if(GCLR==mpol2-1) then
+    if(GCLR==mpar-1) then
        call connect_condition_across_theta_cut(a_right, 1)
     endif
 
@@ -193,11 +193,11 @@ contains
     call MPI_Sendrecv(a,        m*n, MPI_real8, my_left2,  4, &
          &            a_right2, m*n, MPI_real8, my_right2, 4,Tube_COMM,status,ierr)
 
-    if(GCLR==mpol2-2) then
+    if(GCLR==mpar-2) then
        call connect_condition_across_theta_cut(a_right2, 1)
     endif
 
-    if(GCLR==mpol2-1) then
+    if(GCLR==mpar-1) then
        call connect_condition_across_theta_cut(a_right2, 1)
     endif
 

@@ -6,7 +6,7 @@ contains
   subroutine surface_average_of_n0(s, nx)
     ! Retain only the magnetic surface average of n=0 harmonic
     use constants, only: p_, twopi
-    use magnetic_coordinates, only: nrad, nz => mpol2, jacobian_av, abs_jacobian
+    use magnetic_coordinates, only: nrad, nz => mpar, jacobian_av, abs_jacobian
     use domain_decomposition, only: tube_comm, ipol_eq, dtheta2
     use mpi
     implicit none
@@ -29,7 +29,7 @@ contains
     ! The n=0 mode is often numerically unstable if we keep all m harmonics
     ! m filtering (usually retain only m=0) is needed to make the simulation stable
     use constants, only: p_, ii, twopi, pi
-    use magnetic_coordinates, only: nz => mpol2
+    use magnetic_coordinates, only: nz => mpar
     use domain_decomposition, only: tclr, gclr, ntube, grid_comm, tube_comm
     use mpi
     implicit none
@@ -92,22 +92,22 @@ contains
 
   subroutine mfilter_for_each_n(s, nx, kn)
     use constants, only: p_, ii, twopi, pi
-    use magnetic_coordinates, only: nsegment, nrad, nz => mpol2
+    use magnetic_coordinates, only: nsegment, nrad, nz => mpar
     use radial_module, only: qrad
     use domain_decomposition, only: tclr, gclr, ntube, grid_comm, tube_comm, theta_start
     use mpi
     implicit none
     integer, intent(in) :: nx, kn !radial, toroidal_harmonic
     complex(p_), intent(inout) :: s(nx)
-    integer, parameter :: mupp = 5 
+    integer, parameter :: mupp = 5, resolution = 20
     complex(p_) :: coef(-mupp:mupp)
     logical, save :: is_first = .true.
-    integer, save :: my_start, my_end, span, my_range
+    integer, save :: my_start, my_end, span, my_range, nzz
     integer, allocatable, save :: recvcounts(:), displacement(:)
     complex(p_), allocatable, save :: wexp1(:,:,:), wexp2(:,:)
-    complex(p_), allocatable :: my_sz(:), sz(:,:), my_filtered(:), filtered(:)
-    integer :: i, j, km, ierr, nq0
-    real(p_) :: th
+    complex(p_), allocatable :: sz(:,:), szz(:,:), my_filtered(:), filtered(:)
+    integer :: i, i0, j, km, ierr, nq0
+    real(p_) :: theta, theta0, c
 
     if (is_first .eqv. .true.) then !do this only the first time of entering this subroutine
        is_first = .false.
@@ -123,42 +123,51 @@ contains
        do i = 0, ntube-1
           displacement(i) = i * span
        enddo
-       allocate(wexp1(0:nz-1, -mupp:mupp, my_start:my_end))
+       nzz = nz*resolution
+       allocate(wexp1(0:nzz-1, -mupp:mupp, my_start:my_end))
        allocate(wexp2(-mupp:mupp, my_start:my_end))
 
        do j = my_start, my_end
           nq0 = nint(nsegment*kn*qrad(j+1))
           do km = -mupp, mupp
 
-             do i = 0, nz-1
-                th = -pi + i*twopi/nz
-                wexp1(i, km, j) = exp(-ii*(km - nq0)*th)
+             do i = 0, nzz-1
+                theta = -pi + i*twopi/nzz
+                wexp1(i, km, j) = exp(-ii*(km - nq0)*theta)
              enddo
 
-             th = -pi + gclr*twopi/nz
-             wexp2(km, j) = exp(+ii*(km - nq0)*th)
+             theta = -pi + gclr*twopi/nz
+             wexp2(km, j) = exp(+ii*(km - nq0)*theta)
 
           enddo
        enddo
     endif
 
-    allocate(my_sz(my_start:my_end))
-    allocate(sz(my_start:my_end, 0:nz-1))
-    my_sz(:) = s(my_start:my_end) / exp(ii*nsegment*kn*qrad(my_start+1:my_end+1)*(theta_start+pi))
-    call mpi_allgather(my_sz(:), my_range, MPI_complex16, sz, my_range, MPI_complex16, tube_comm, ierr)
+    allocate(sz(my_start:my_end, 0:nz))
+    call mpi_allgather(s(my_start:my_end), my_range, MPI_complex16, sz, my_range, MPI_complex16, tube_comm, ierr)
+    sz(my_start:my_end, nz) = sz(my_start:my_end, 0) * exp(ii*nsegment*kn*qrad(my_start+1:my_end+1)*twopi)
+    allocate(szz(my_start:my_end, 0:nzz-1))
+    do i = 0, nzz-1
+       i0 = i/resolution
+       theta0 = -pi + i0*twopi/nz
+       theta = -pi + i*twopi/nzz
+       c = (theta - theta0)/(twopi/nz)
+       szz(my_start:my_end, i) = (1-c)*sz(my_start:my_end, i0) + c*sz(my_start:my_end, i0+1)
+       szz(my_start:my_end, i) = szz(my_start:my_end, i)/exp(ii*nsegment*kn*qrad(my_start+1:my_end+1)*theta)
+    enddo
 
     allocate(my_filtered(my_start:my_end))
     allocate(filtered(nx))
     do j = my_start, my_end
        do km = -mupp, mupp
-          coef(km) = sum(sz(j,:)*wexp1(:,km, j))/nz ! Fourier expansion coefficient
+          coef(km) = sum(szz(j,:)*wexp1(:,km, j))/nzz ! Fourier expansion coefficient
        enddo
        my_filtered(j) = sum(coef(:)*wexp2(:,j))  ! Reconstruction (i.e., Inverse Fourier Transform)
     enddo
     call mpi_allgatherv(my_filtered, my_range, MPI_complex16, &
          &     filtered, recvcounts, displacement, MPI_complex16, grid_comm, ierr)
 
-    s(:) = filtered(:) * exp(ii*nsegment*kn*qrad(2:nrad-1)*(theta_start+pi))
+    s(:) = filtered(:) * exp(ii*nsegment*kn*qrad(2:nrad-1)*theta_start)
   end subroutine mfilter_for_each_n
 
 
@@ -299,40 +308,6 @@ contains
        if(j < jcut) s(:, j) = 0._p_
     enddo
   end subroutine radial_sine_high_pass
-
-  
-!!$subroutine radial_sine_filter_em_field()
-!!$  use constants,only:p_
-!!$  use perturbation_field,only: ex=>ex_left,ey=>ey_left,epar=>epar_left !as input and output
-!!$  use perturbation_field,only: mx=>mf_x_left,my=>mf_y_left,mpar=>mf_par_left !as input and output
-!!$  use magnetic_coordinates,only: m=>mtor,n=>nrad
-!!$  use transform_module
-!!$  implicit none
-!!$  real(p_)::    epar_dst(m+1,n), ex_dst(m+1,n),  ey_dst(m+1,n)
-!!$  real(p_)::    mpar_dst(m+1,n), mx_dst(m+1,n),  my_dst(m+1,n)
-!!$
-!!$  call oned_sine_transform2(ex,ex_dst,m+1,n) 
-!!$  call oned_sine_transform2(ey,ey_dst,m+1,n) 
-!!$  call oned_sine_transform2(epar,epar_dst,m+1,n) 
-!!$  call radial_sine_filter_core(ex_dst,m+1,n)
-!!$  call radial_sine_filter_core(ey_dst,m+1,n)
-!!$  call radial_sine_filter_core(epar_dst,m+1,n)
-!!$  call oned_inverse_sine_transform2(ex_dst,ex,m+1,n) !computing 1d inverse DST of s(:,:) along the second dimension
-!!$  call oned_inverse_sine_transform2(ey_dst,ey,m+1,n) !computing 1d inverse DST of s(:,:) along the second dimension
-!!$  call oned_inverse_sine_transform2(epar_dst,epar,m+1,n) !computing 1d inverse DST of s(:,:) along the second dimension
-!!$
-!!$  call oned_sine_transform2(mx,mx_dst,m+1,n) 
-!!$  call oned_sine_transform2(my,my_dst,m+1,n) 
-!!$  call oned_sine_transform2(mpar,mpar_dst,m+1,n) 
-!!$  call radial_sine_filter_core(mx_dst,m+1,n)
-!!$  call radial_sine_filter_core(my_dst,m+1,n)
-!!$  call radial_sine_filter_core(mpar_dst,m+1,n)
-!!$  call oned_inverse_sine_transform2(mx_dst,mx,m+1,n) !computing 1d inverse DST of s(:,:) along the second dimension
-!!$  call oned_inverse_sine_transform2(my_dst,my,m+1,n) !computing 1d inverse DST of s(:,:) along the second dimension
-!!$  call oned_inverse_sine_transform2(mpar_dst,mpar,m+1,n) !computing 1d inverse DST of s(:,:) along the second dimension
-!!$
-!!$
-!!$end subroutine radial_sine_filter_em_field
 
 
   subroutine radial_sine_filter(s)

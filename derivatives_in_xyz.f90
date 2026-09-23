@@ -3,24 +3,7 @@ module derivatives_in_xyz
   implicit none
 
 contains
-  
-subroutine x_derivative0(field, field_x)
-    use magnetic_coordinates, only: dradcor
-    complex(p_), intent(in) :: field(:,:)
-    complex(p_), intent(out) :: field_x(:,:)
-    integer :: m, n, i, j
-
-    m=size(field,1)
-    n=size(field,2)
-    do i = 1, m
-       do j = 2, n-1
-          field_x(i,j) = (field(i,j+1)-field(i,j-1))/(two*dradcor)
-       enddo
-       field_x(i,1) = two*field_x(i,2)-field_x(i,3) !linear interpolation to obtain the derivative at the boundary point
-       field_x(i,n) = two*field_x(i,n-1)-field_x(i,n-2) !linear interpolation
-    enddo
-  end subroutine x_derivative0
-  
+    
   subroutine x_derivative(field, field_x)
     !calculate the derivative of field with respect to psi in field-line-following-coordinates (psi,theta,alpha)
     use magnetic_coordinates, only: dradcor
@@ -65,7 +48,7 @@ subroutine x_derivative0(field, field_x)
 
   subroutine z_derivative(a, a_theta) ! calculating derivative along a magnetic field line
     use domain_decomposition, only: dtheta2, myid, my_right, my_left, Tube_COMM, gclr
-    use magnetic_coordinates, only: mpol2
+    use magnetic_coordinates, only: mpar
     use communication_connection, only: connect_condition_across_theta_cut
     use mpi
     implicit none

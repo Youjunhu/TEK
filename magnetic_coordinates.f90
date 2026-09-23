@@ -2,9 +2,9 @@ module magnetic_coordinates
   use constants, only: p_
   implicit none
   save
-  integer :: mpol, nrad, mpol2, mtor 
+  integer :: mpol, nrad, mpar, mtor 
   !(mpol, mtor, nrad) is number of gridpoints along the (poloidal, toroidal, radial) direction, respectively.
-  !mpol2 is number of poloidal gridpoints for perturbed field
+  !mpar is number of poloidal gridpoints for perturbed field
   real(p_), dimension(:), allocatable :: xgrid, ygrid, zgrid  !(radial, toroidal, poloidal) grid
   real(p_) :: pfn_inner, pfn_bdry, radial_width
   real(p_) :: dtheta, dradcor, dtor
@@ -88,15 +88,15 @@ contains
     use magnetic_field, only: psi_func
     implicit none
     real(p_) :: one_dim_psi_func,x,r_axis,z_axis,slope,psival
-    one_dim_psi_func = psi_func(x,zfunc(r_axis,z_axis,slope,x))-psival
+    one_dim_psi_func = psi_func(x, zfunc(r_axis,z_axis,slope,x))-psival
   end function one_dim_psi_func
 
 
   function zfunc(r_axis,z_axis,slope,x) !straight line Z=Z(x) with slope "slope" in poloidal plane starting from the location of magnetic axis
     use constants,only:p_
     implicit none
-    real(p_):: zfunc,x,r_axis,z_axis,slope
-    zfunc=z_axis+slope*(x-r_axis)
+    real(p_) :: zfunc,x,r_axis,z_axis,slope
+    zfunc = z_axis+slope*(x-r_axis)
   end function zfunc
 
 
@@ -219,15 +219,15 @@ subroutine construct_magnetic_coordinates()
   ygrid = [ (zero + dtor*(i-1), i = 1, mtor+1) ]
 
   call plasma_volume_of_computational_region(vol)
-  if ((myid==0) ) call diagnostic2()
-  if((myid==0) .and. (diagnosis.eqv..true.)) call diagnostic3()
+  if (myid==0) call diagnostic2()
+  if (myid==0) call diagnostic3()
   deallocate(r_mag_surf0, z_mag_surf0)
 
 contains
 
   subroutine diagnostic1()
-    integer:: u
-    open(newunit=u,file='mag_surf_shape0.txt')
+    integer :: u
+    open(newunit=u, file='mag_surf_shape0.txt')
     do j=1,nrad
        do i=1,np_lcfs
           write(u,*) r_mag_surf0(i,j), z_mag_surf0(i,j)
@@ -239,7 +239,7 @@ contains
   end subroutine diagnostic1
 
   subroutine diagnostic2()
-    integer:: u
+    integer :: u
     open(newunit=u,file='theta_line.txt')
     do i=1,mpol
        do j=1,nrad
@@ -262,9 +262,9 @@ contains
   end subroutine diagnostic2
 
   subroutine diagnostic3()
-    integer:: u
-    open(newunit=u,file='minor_r.txt')
-    do j=1,nrad
+    integer :: u
+    open(newunit=u, file='minor_r.txt')
+    do j = 1, nrad
        write(u,*) pfn(j), minor_r_array(j),  minor_r_prime_array(j)
     enddo
     close(u)
@@ -354,8 +354,8 @@ subroutine construct_poloidal_coordinate(r_old, z_old, mpol_old, mpol, theta_new
      enddo
   elseif(poloidal_angle_type .eq. 'straight-field-line') then
      do i = 2, mpol_old
-        rmid=0.5_p_*(r_old(i-1)+r_old(i))
-        zmid=0.5_p_*(z_old(i-1)+z_old(i))
+        rmid = 0.5_p_*(r_old(i-1)+r_old(i))
+        zmid = 0.5_p_*(z_old(i-1)+z_old(i))
         theta_old(i)=theta_old(i-1)+dl(i-1)/(rmid*psi_gradient_func(rmid,zmid)) !straight-field-line poloidal angle
      enddo
   elseif(poloidal_angle_type .eq. 'Boozer') then

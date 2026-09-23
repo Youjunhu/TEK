@@ -10,7 +10,7 @@ contains
     use constants, only: zero, elementary_charge, atom_mass_unit, Mev
     use magnetic_coordinates, only: nrad, xgrid, mtor
     use gk_radial_profiles, only: density_object, temperature_object
-    use control_parameters, only: dt_omega_i_axis, nh_max, adiabatic_electrons
+    use control_parameters, only: dt_omega_i_axis, nh_max, adiabatic_electrons, polarization_method
     use gk_module, only: nsm
     use gk_polarization
     use normalizing, only: tu,qu, nu
@@ -28,16 +28,21 @@ contains
 
     do ns = 1, nsm
        !if(ns<30) then
+       if(polarization_method=='spectrum') then
           call prepare_polarization_matrix(ns, mmm)
+       elseif (polarization_method=='interpolation') then
+          call prepare_polarization_matrix20(ns, mmm, nx)
           !call prepare_polarization_matrix2(ns, mmm, nx)
-          !call prepare_polarization_matrix20(ns, mmm, nx)
           !call prepare_polarization_matrix3(ns, mmm)
+       else
+          stop 'please specify polariztion matrix: spectrum or interpolation'
+       endif
        !else
        !   call prepare_slowing_down_polarization_matrix(mmm, 4*atom_mass_unit, 2*elementary_charge, 3.5*Mev)
        !endif
        polarization(:,:,:) = polarization + mmm
     enddo
-if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polarization(nx/2,nx/2, nh_max))
+    if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polarization(nx/2,nx/2, nh_max))
 
     allocate(poisson_matrix(nx, nx, 0:nh_max))
     allocate(ipiv(nx, 0:nh_max))
@@ -70,9 +75,9 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polariz
   subroutine solve_poisson(density_left, density_right, potential, phix, phiy, phiz, phi_dft)
     use constants, only: p_, zero, elementary_charge
     use magnetic_coordinates, only: m=>mtor, n=>nrad, jacobian_av, abs_jacobian, &
-         & mpol2, xgrid, dradcor, dtor
+         & mpar, xgrid, dradcor, dtor
     use control_parameters, only: fk_switch, filter_radial, dt_omega_i_axis, &
-         & ismooth, nh_min, nh_max, adiabatic_electrons
+         & ismooth, nh_min, nh_max, adiabatic_electrons, mfilter
     use gk_radial_profiles, only : density_object, temperature_object
     use normalizing,only: tu,qu, nu
     !use fk_module,only: mass_i,charge_i
@@ -101,16 +106,16 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polariz
        density(:,j) = density(:,j)*w_unit/dvol(j)/nu
     enddo
     source = density(:,2:n-1)
-    
+
     call oned_DFT_parallel_version(source, source_dft, m, n-2)
 
-    if(nh_min == 0) then !remove harmonics of low kx to suppress numerical instabilities
-       call oned_sine_transform2(real(source_dft(0:0,:)), signal_dst, 1, n-2)
-       call radial_sine_high_pass(signal_dst, 1, n-2)
-       call oned_inverse_sine_transform2(signal_dst, signal, 1, n-2)
-       source_dft(0,:) = signal(1,:)
-    endif
-    
+    ! if(nh_min == 0) then !remove harmonics of low kx to suppress numerical instabilities
+    !    call oned_sine_transform2(real(source_dft(0:0,:)), signal_dst, 1, n-2)
+    !    call radial_sine_high_pass(signal_dst, 1, n-2)
+    !    call oned_inverse_sine_transform2(signal_dst, signal, 1, n-2)
+    !    source_dft(0,:) = signal(1,:)
+    ! endif
+
     phi_dft = 0 !only some toroidal harmonics will be solved, others are assumed to be zero
 
     if((adiabatic_electrons .eqv. .true.) .and. (nh_min==0)) then
@@ -121,7 +126,7 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polariz
        phi_n0(:) = real(phi_dft(0,:)) * abs_jacobian(ipol_eq, 2:n-1)
 
        call MPI_Allreduce(phi_n0, sum_phi, n-2, MPI_Double, MPI_sum, tube_comm, ierr)
-       av_phi(:) = (sum_phi(:)/mpol2)/jacobian_av(2:n-1) !magnetic surface averaging
+       av_phi(:) = (sum_phi(:)/mpar)/jacobian_av(2:n-1) !magnetic surface averaging
        do j = 1, n-2 !add <phi> to the right-hand side
           x = xgrid(j+1)
           coeff = (density_object(1)%func(x)/nu)*(elementary_charge/qu)**2/(temperature_object(1)%func(x)/tu)
@@ -130,9 +135,11 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polariz
     endif
 
     call solver_toroidal_mode_number_parallel(poisson_matrix, IPIV, source_dft, phi_dft)
-    do kn = nh_min, nh_max
-       !call mfilter_for_each_n(phi_dft(kn,:), n-2, kn)
-    enddo
+    if(mfilter .eqv. .true.) then
+       do kn = 1, nh_max
+          call mfilter_for_each_n(phi_dft(kn,:), n-2, kn)
+       enddo
+    endif
     do kn = 1, nh_max ! For negative toroidal mode number
        phi_dft(m-kn,:) = conjg(phi_dft(kn,:)) !use the Complex conjugate relation
     enddo
@@ -140,10 +147,7 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polariz
     if(nh_min == 0) call surface_average_of_n0(phi_dft(0,:), n-2)
 
     call oned_backward_DFT_parallel_version(phi_dft, phi, m, n-2) !radial task decomposion
-    
-    call x_derivative0(phi_dft, phix_dft) !more accurate than taking x derivative in real space
-    call oned_backward_DFT_parallel_version(phix_dft, phix(:, 2:n-1, 1), m, n-2) 
-    
+
     potential(:, 2:n-1, 1) = phi(:,:)
     potential(:, 1, 1) = 0._p_ !zero boundary condition
     potential(:, n, 1) = 0._p_  !zero boundary condition
@@ -153,7 +157,9 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polariz
        call smoothing_along_field_line_core(potential(:,:,1))
     enddo
 
-    !call x_derivative(potential(:,:,1), phix(:,:,1))
+    !call add_antenna(potential) !testing antenna excitation, comment out this line if you do not need
+    
+    call x_derivative(potential(:,:,1), phix(:,:,1))
     phix(:, 1, 1) = 0; phix(:, n, 1) = 0
     call y_derivative(potential(:,:,1), phiy(:,:,1))
     call z_derivative(potential(:,:,:), phiz(:,:,1)) 
@@ -164,6 +170,37 @@ if(tclr==0) write(*,*) gclr, real(polarization(nx/2,nx/2, nh_max)), imag(polariz
 
   end subroutine solve_poisson
 
+
+  subroutine add_antenna(potential)
+    use constants, only: p_, twopi
+    use magnetic_coordinates, only: xgrid, tfn, ygrid, nsegment
+    use domain_decomposition, only: theta_start, dtheta2
+    use environment, only : tsecond
+    use perturbation_field, only: antenna !output
+    implicit none
+    real(p_), intent(inout) :: potential(:,:,:)
+    integer :: i,j, ny, nx, nh
+    real(p_), parameter :: w = 420.0*1000 !rad/s
+    real(p_), parameter :: x0 = 0.5, xw = 0.02
+    real(p_) :: c1, c2, gauss, wave
+
+    ny = size(potential, 1)
+    nx = size(potential, 2)
+    nh = nsegment
+    c1 = cos(theta_start)
+    c2 = cos(theta_start+dtheta2)
+    do j = 1, nx
+       gauss = 0.5*exp(-(tfn(j)**0.5-x0)**2/xw**2)
+       do i = 1, ny
+          wave = cos(ygrid(i)*nh-w*tsecond)
+          antenna(i,j,1) = gauss*wave*c1
+          antenna(i,j,2) = gauss*wave*c2
+       enddo
+    enddo
+
+    potential = potential + antenna
+
+  end subroutine add_antenna
 end module poisson
 
 subroutine potential_to_cylindrical_field()
@@ -199,11 +236,6 @@ subroutine potential_to_cylindrical_field()
 
 
   !smoothing is moved outside of this subroutine
-!!$  if(filter_toroidal.eqv..true.) then !filter over the toroidal mode number, keeping the perturbation with desired toroidal mode number
-!!$     call oned_fourier_transform1(potential,potential_dft,mtor,nrad) !calculating 1d DFT of s(:,:) along the first dimension
-!!$     call toroidal_filter(potential_dft,mtor,nrad)
-!!$     call oned_backward_fourier_transform1(potential_dft,potential,mtor,nrad)
-!!$  endif
 
 !!$  if(filter_radial.eqv..true.) then !filter over the radial mode number, keeping only low-radial-harmonics of the perturbation
 !!$     call oned_sine_transform2(potential,potential_dst,mtor,nrad) !calculating 1d DST of s(:,:) along the second dimension

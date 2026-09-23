@@ -33,7 +33,7 @@ module gk_module
 contains
   subroutine initialize_gk(nsm, baxis, minor_a, dt_omega_i_axis)
     use domain_decomposition,only : numprocs, myid
-    use magnetic_coordinates, only : nrad, mpol2, mtor, pfn, pfn_inner, pfn_bdry
+    use magnetic_coordinates, only : nrad, mpar, mtor, pfn, pfn_inner, pfn_bdry
     use gk_radial_profiles, only : initialize_gk_radial_profiles
     use gk_profile_funcs, only: gkt_func, gkn_func, gkdtdx_func, gkdndx_func
     integer, intent(in) :: nsm
@@ -69,7 +69,7 @@ contains
     vn_gk(:) = ln/(twopi/(bn*abs(charge_gk(:))/mass_gk(:)))
     omega_gk_axis=abs(baxis*charge_gk)/mass_gk
 
-    total_nm_gk(:) = nm_gk_per_cell(:) * nrad * mpol2 * mtor
+    total_nm_gk(:) = nm_gk_per_cell(:) * nrad * mpar * mtor
     nm_gk(:) = total_nm_gk(:)/numprocs !the number of markers initially loaded per processor
     !Later, nm_gk will be set to the actual number of markers per proc 
     !the value of which will be differnt for differnt processors and at differnt time

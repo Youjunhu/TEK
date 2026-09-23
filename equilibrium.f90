@@ -189,9 +189,9 @@ subroutine read_gfile()
 
      write(*,*) 'nR, nZ =', nx, nz
      write(*,*) 'rleft=',rleft, 'rright=', rleft+xdim,'zlow=',zmid-zdim/2._p_,'zupp=',zmid+zdim/2._p_
-     write(*,*) 'magnetic location (meter) (r,z)=', r_axis, z_axis
+     write(*,*) 'Magnetic axis location (meter) (r,z)=', r_axis, z_axis
      write(*,*) 'baxis (Tesla)=', baxis
-     write(*,*) 'rcenter=',major_R, 'vacuum magnetic field at rcenter=',btorus
+     write(*,*) 'rcenter=', major_R, 'vacuum magnetic field at rcenter=', btorus
      !write(*,*)  'total current in all TF coils (MegaAmpere)=', btorus*major_R/(2d-7)/10**6 !Ampere's circuital law
      write(*,*) 'psi_axis=',psi_axis,'psi_lcfs=',psi_lcfs
      write(*,*) 'np_lcfs=',np_lcfs

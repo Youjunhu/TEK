@@ -14,13 +14,13 @@ module my_FFTW3
 
 contains
   subroutine  initialize_fft
-    use magnetic_coordinates,only: m=>mtor, n=>nrad, mpol2
+    use magnetic_coordinates,only: m=>mtor, n=>nrad, mpar
     allocate(in1(0:m-1))
     allocate(out1(0:m-1))           
     allocate(in2(0:n-1))
     allocate(out2(0:n-1))
-    allocate(in4(0:mpol2-1))
-    allocate(out4(0:mpol2-1))
+    allocate(in4(0:mpar-1))
+    allocate(out4(0:mpar-1))
 
     call dfftw_plan_dft_1d(plan_toroidal, m, in1, out1, FFTW_FORWARD, FFTW_measure)
     call dfftw_plan_dft_1d(plan_radial, n, in2, out2, FFTW_FORWARD, FFTW_MEASURE)

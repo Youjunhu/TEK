@@ -583,7 +583,7 @@ end function random_yj
     !k=kk(1)
     dz = abs((z_lcfs - z_axis))
     do i=1,np
-       if(x_lcfs(i) > x_axis) dz(i) = 10d20 !filtering
+       if (x_lcfs(i) > x_axis) dz(i) = 10d20 !filtering
     enddo
     kk = minloc(dz)
     k = kk(1)

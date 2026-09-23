@@ -656,7 +656,7 @@ contains
 
   subroutine mode_structure_in_yz_plane(kt, ayxz, partial_file_name)
     use constants, only: p_, pi, twopi
-    use magnetic_coordinates, only: mtor, ygrid, zgrid, nrad, mpol2, &
+    use magnetic_coordinates, only: mtor, ygrid, zgrid, nrad, mpar, &
          & r_mc, z_mc, tor_shift_mc
     use domain_decomposition, only: myid, tube_comm, multi_eq_cells, gclr
     use mpi
@@ -673,7 +673,7 @@ contains
     m = size(ayxz, 1) !toroidal
     n = size(ayxz, 2) !radial
     allocate(ay(m))
-    allocate(ayz(m, 0:mpol2))
+    allocate(ayz(m, 0:mpar))
     jrad = nrad/2 !choose a radial index
     
     ay(:) = ayxz(:, jrad, 1)
@@ -681,14 +681,14 @@ contains
          &          ayz, m, MPI_real8, 0, tube_COMM, ierr)
 
     ! z boundary
-    if(gclr==mpol2-1) call mpi_send(ayxz(:,jrad, 2), m, MPI_real8, 0, 123, tube_comm, ierr)
-    if(gclr==0) call mpi_recv(ayz(:, mpol2), m, MPI_real8, mpol2-1, 123, tube_comm, status, ierr)
+    if(gclr==mpar-1) call mpi_send(ayxz(:,jrad, 2), m, MPI_real8, 0, 123, tube_comm, ierr)
+    if(gclr==0) call mpi_recv(ayz(:, mpar), m, MPI_real8, mpar-1, 123, tube_comm, status, ierr)
 
     if(myid==0) then
        full_file_name='ms/yz_txxxxxx'//partial_file_name
        write(full_file_name(8:13),'(i6.6)') kt
        open(newunit=u, file=full_file_name)
-       do ipol = 0, mpol2 !z : poloidal
+       do ipol = 0, mpar !z : poloidal
           ipol_eq=multi_eq_cells*ipol + 1 !index in the equilibrium grids
           do itor =1, mtor !y : toroidal 
              phi = ygrid(itor) + tor_shift_mc(ipol_eq, jrad)
@@ -707,7 +707,7 @@ contains
     use constants, only: p_, one, zero, pi
     use domain_decomposition, only: dtheta2, myid, tube_comm, multi_eq_cells
     use control_parameters, only: nh_min, nh_max
-    use magnetic_coordinates, only: mtor, nrad, nz=>mpol2, pfn, tfn, r=>r_mc, z=>z_mc
+    use magnetic_coordinates, only: mtor, nrad, nz=>mpar, pfn, tfn, r=>r_mc, z=>z_mc
     use mpi
     implicit none
     integer, intent(in) :: kt
@@ -746,19 +746,26 @@ contains
   subroutine mode_structure_in_poloidal_plane(kt, a, str)
     use constants, only: p_, one
     use domain_decomposition, only: theta_start, dtheta2
+    use control_parameters, only : nh_max
+    use magnetic_coordinates, only : nsegment, mpar
+    use radial_module, only : qrad
     implicit none
     integer, intent(in) :: kt
     character(*), intent(in) :: str
     real(p_), intent(in) :: a(:, :, :)
-    integer, parameter :: nz = 20 !along field line
-    real(p_) :: theta(0:nz-1), c
-    real(p_) :: perturb(size(a,1), size(a,2), 0:nz-1)
-    real(p_) :: a0(size(a,1), size(a,2), 0:nz-1), a1(size(a,1),size(a,2), 0:nz-1)
+    integer :: m, n, nz, i, j 
+    real(p_), allocatable :: perturb(:, :, :), a0(:, :, :), a1(:,:, :)
+    real(p_), allocatable :: theta(:)
+    real(p_) ::  c
     character(len=100) :: file_name
-    integer :: m, n, j, i
 
     m = size(a,1) !toroidal
     n = size(a,2) !radial
+    nz = nint(nh_max*nsegment*abs(qrad(n/2)))*16/mpar ! poloidal grid number in each domain
+    
+    allocate(perturb(m, n, 0:nz-1))
+    allocate(a0(m, n, 0:nz-1), a1(m, n, 0:nz-1))
+    allocate(theta(0:nz-1))
 
     do i = 0, nz-1 !interpolate to more z gridpoints 
        theta(i) = theta_start + dtheta2/nz*i
@@ -771,12 +778,12 @@ contains
           a0(:, j, i) = sum(perturb(:,j, i))/m
        enddo
     enddo
+    a1 = perturb - a0
 
     file_name='ms/poloidal_plane_txxxxxx'//str//'_neq0'
     write(file_name(20:25),'(i6.6)') kt
     call to_poloidal_plane(a0, m, n, nz, theta, file_name)
 
-    a1 = perturb - a0
     file_name='ms/poloidal_plane_txxxxxx'//str//'_nneq0'
     write(file_name(20:25),'(i6.6)') kt
     call to_poloidal_plane(a1, m, n, nz, theta, file_name)
@@ -785,7 +792,7 @@ contains
 
   subroutine to_poloidal_plane(yxz, ny, nx, nz, theta, file_name)
     use constants, only: p_, pi, twopi
-    use magnetic_coordinates, only: ygrid, r_mc, z_mc, tor_shift_mc, mpol, mpol2, nsegment, &
+    use magnetic_coordinates, only: ygrid, r_mc, z_mc, tor_shift_mc, mpol, mpar, nsegment, &
          & zgrid, pfn, tfn, toroidal_range
     use domain_decomposition, only: myid, tube_comm, dtheta2
     use interpolate_module
@@ -801,7 +808,7 @@ contains
     integer :: j, i, iz,  u, ierr
 
     allocate(field(nx, 0:nz-1))
-    allocate(field0(nx, 0:nz*mpol2-1))
+    allocate(field0(nx, 0:nz*mpar-1))
 
     !choose a cylindrical toroidal angle, for which the mode structure is computed
     phi = 0.5_p_*twopi/nsegment
@@ -823,7 +830,7 @@ contains
     if(myid == 0) then
        open(newunit=u, file=file_name)
        do j = 1, nx
-          do i = 0, mpol2 - 1
+          do i = 0, mpar - 1
              my_theta = -pi + i*dtheta2
              do iz = 0, nz-1
                 th = my_theta + dtheta2/nz*iz

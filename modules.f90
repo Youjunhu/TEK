@@ -37,6 +37,12 @@ module constants
   complex(p_), parameter :: ii=(0.0_p_, 1._p_) 
 end module constants
 
+module environment
+  use constants, only : p_
+  implicit none
+  real(p_) :: dt_second, tsecond
+end module environment
+
 module normalizing
   use constants, only : p_
   implicit none
@@ -108,8 +114,8 @@ module control_parameters
   save
   integer  :: kstart,kend
   real(p_) :: dt_omega_i_axis
-  character(100):: poloidal_angle_type
-  logical :: adiabatic_electrons
+  character(100):: poloidal_angle_type, polarization_method
+  logical :: adiabatic_electrons, mfilter
   logical :: store_restart_data
   integer  :: iplot_mode_structure
   logical  :: filter_radial, diagnosis !if ture, output additional testing information
@@ -123,7 +129,7 @@ end module control_parameters
 
 
 module perturbation_field
-  use constants, only: p_
+  use constants, only: p_, zero
   implicit none
   save
   real(p_), dimension(:,:,:), allocatable :: potential, phix, phiy, phiz !electrostatic potential and its derivatives
@@ -133,6 +139,7 @@ module perturbation_field
   real(p_), dimension(:,:,:), allocatable :: apara_h, apara_s, apara_s_old !used in the mixed-variable pullback method
   real(p_), dimension(:,:,:), allocatable :: ahx, ahy, ahz
 
+  real(p_), allocatable :: antenna(:,:,:)
   real(p_), dimension(:,:), allocatable :: ef_cyl_r_left,ef_cyl_z_left,ef_cyl_phi_left
   real(p_), dimension(:,:), allocatable :: ef_cyl_r_right,ef_cyl_z_right,ef_cyl_phi_right
 
@@ -160,7 +167,7 @@ contains
     allocate(ahz(m,n,2)) !dApar_h/dz
     allocate(apara_dft(0:m-1, n-2))
 
-    
+    !allocate(antenna(m, n,2), source=zero) 
     allocate(ef_cyl_r_left(m+1,n))
     allocate(ef_cyl_z_left(m+1,n))
     allocate(ef_cyl_phi_left(m+1,n))
@@ -171,4 +178,3 @@ contains
   end subroutine allocate_field_matrix
 
 end module perturbation_field
-

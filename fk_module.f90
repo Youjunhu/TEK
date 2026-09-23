@@ -46,7 +46,7 @@ module fk_module !fully-kinetic for ions
 contains
   subroutine initialize_fk()
     use domain_decomposition,only: numprocs, myid
-    use magnetic_coordinates, only : nrad, mpol2,mtor
+    use magnetic_coordinates, only : nrad, mpar,mtor
     namelist/fk_nmlt/mass_i,charge_i,ni0,ti0,kappa_ni,kappa_ti,nmarker_i_per_cell, &
          & ion_spatial_loading_scheme, ion_velocity_loading_scheme, fk_nonlinear
     integer:: fixed_large_size, u
@@ -57,7 +57,7 @@ contains
      if(myid==0)  write(*,fk_nmlt)
 
     
-    total_nmarker_i=nmarker_i_per_cell*nrad*mpol2*mtor
+    total_nmarker_i=nmarker_i_per_cell*nrad*mpar*mtor
     if(myid.eq.0) write(*,*) 'total number of ions=',     total_nmarker_i
     nmarker_i=total_nmarker_i/numprocs !nmarker_i initially store the number of markers initially loaded per processor (i.e.total_nmarker_i/numprocs), latter actual number of markers per proc will be assigned to nmarker_i, the value of which will be differnt for differnt processors and at differnt time
     fixed_large_size=(total_nmarker_i/numprocs)*3/2 !the number of particle per proc after re-arranging the particles between the processors may exceed the number of original loaded particles per proc (i.e., total_nmarker_i/numprocs), increasing the array length by a factor of 3/2 is needed to make sure that the array is big enough to contain all the particles that belong to the domain for which the processor is responsible.

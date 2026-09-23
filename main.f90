@@ -4,7 +4,7 @@ program main
        &  store_restart_data, fk_switch, diagnosis, adiabatic_electrons
   use normalizing, only: bn,ln, dtao_main, qu, tu, vu, nu
   use magnetic_coordinates, only: mpol,nrad, xlow, xupp, nsegment, dtheta, vol, grad_psi, &
-       & mpol2, mtor, zgrid, tor_shift_mc, toroidal_range, GSpsi_prime
+       & mpar, mtor, zgrid, tor_shift_mc, toroidal_range, GSpsi_prime
   use magnetic_field, only: qfunc, pfn_func
   use func_in_mc, only: minor_r_radcor
   use table_in_mc, only: prepare_table_in_mc
@@ -31,8 +31,8 @@ program main
   use gk_trajectory_pusher, only: push_gc !, count_lost_markers_gk
   use gk_weight_pusher, only: push_gk_weight
   use perturbation_field, only: allocate_field_matrix, potential, phix, phiy, phiz, phi_dft, &
-       &  apara, apara_h, apara_s, apara_s_old, ax, ay, az, ahx, ahy, ahz, apara_dft
-  use domain_decomposition, only: myid,numprocs, nvp, tube_comm,grid_comm,ntube,gclr,tclr, &
+       &  apara, apara_h, apara_s, apara_s_old, ax, ay, az, ahx, ahy, ahz, apara_dft, antenna
+  use domain_decomposition, only: myid,numprocs, nvp, tube_comm, grid_comm, ntube, gclr, tclr, &
        & dtheta2,theta_start,my_right,my_left, my_right2, my_left2, multi_eq_cells, ipol_eq, dvol
   use misc, only: calculate_dvol
 
@@ -52,12 +52,13 @@ program main
   use restart, only: write_data_for_restarting, read_data_for_restarting
   use my_FFTW3
   use spectrum_diagnostic
+  use environment, only : dt_second, tsecond
   use mpi
   implicit none
 
   integer :: ierr, id_writing_evolution, k, kt, ns
   integer :: file_unit1, file_unit2, file_unit3, file_unit4, file_unit5
-  real(p_) :: omega_i_axis, dt_second, rho_i, k_binormal1, k_binormal2, beta_ni
+  real(p_) :: omega_i_axis, rho_i, k_binormal1, k_binormal2, beta_ni
   real(p_) :: minor_r_min, minor_r_max, minor_r_width, va0
   real(p_) :: t1, t2, tarray(2) !store the cpu clock time
   real(p_), allocatable :: xdrift0(:), ydrift0(:), zdrift0(:), zdrift00(:), mirror_force(:)
@@ -66,49 +67,54 @@ program main
   real(p_), allocatable :: ahx_ga(:), ahy_ga(:), ahz_ga(:), ah_ga(:) !gyro-averaged perturbations
   real(p_), dimension(:,:), allocatable :: density_left, density_right !gk density
   real(p_), dimension(:,:), allocatable :: jpar_left, jpar_right !gk parallel current
-  real(p_), allocatable :: cs(:), vthermal(:)
+  real(p_), allocatable :: vthermal(:)
   character(len=9) :: tmp
 
   CALL MPI_INIT(ierr)
   CALL MPI_COMM_SIZE(MPI_COMM_WORLD, numprocs, ierr)
   CALL MPI_COMM_RANK(MPI_COMM_WORLD, myid, ierr)
-  if(myid==0) write(*,*) 'numprocs=', numprocs, 'myid=', myid
+  if(myid==0) write(*,*) 'numprocs=', numprocs
   call cpu_time(tarray(1))  !f95 intrinsic subroutine
+  t1 = mpi_wtime() !measure the wall time
 
   call read_parameters()
-  nvp = numprocs/ntube
+
+  if(mod(mpol-1, mpar) .ne. 0) then
+     write(*,*) 'Error: Mod(mpol-1, mpar) must be zero. ', &
+          & 'Please adjust mpol or mpar (in the input namelist)'
+     goto 1234 !end the job
+  endif
+
+  if(mod(numprocs, mpar) .ne. 0) then
+     write(*,*) "mod(numprocs, mpar) must be zero to do z domain decomposition. ', &
+          & 'Please adjust numprocs or mpar"
+     goto 1234 !end the job
+  endif
+
+  !ntube is the number of mpi processors per z cell, mainly for particle parallelization,
+  !also for radial parallization and toroidal mode number parallization
+  ntube = numprocs/mpar
+  nvp = mpar
   GCLR = INT(myid/ntube)
   TCLR = MOD(myid,ntube)
   CALL MPI_COMM_SPLIT(MPI_COMM_WORLD, GCLR, TCLR, GRID_COMM, ierr)
   CALL MPI_COMM_SPLIT(MPI_COMM_WORLD, TCLR, GCLR, TUBE_COMM, ierr)
 
-  t1 = mpi_wtime() !measure the wall time
-
-  if(mod(numprocs, ntube) .ne. 0) then
-     write(*,*) "mod(numprocs,ntube) must be zero, please adjust numprocs or ntube"
-     goto 1234 !end the job
-  endif
-  mpol2 = numprocs/ntube !poloidal grids for perturbed field
-  if(mod(mpol-1, mpol2) .ne. 0) then
-     write(*,*) 'Error: Mod(mpol-1, numprocs/ntube) must be zero', &
-          & 'Please adjust poloidal gridpoint number, mpol, in the input namelist'
-     goto 1234 !end the job
-  endif
-  dtheta2=twopi/mpol2 !the poloidal angle spacing of grids for perturbations
+  !Domain decomposition.
+  dtheta2 = twopi/mpar !the poloidal angle spacing of grids for perturbations
+  !A mpi process is responsible for the poloidal range [theta_start : theta_start+dtheta2]
+  theta_start = -pi + GCLR*dtheta2 
   my_right = GCLR+1
   my_right2 = GCLR+2
-  if(my_right==mpol2) my_right=0
-  if(my_right2==mpol2) my_right2=0
-  if(my_right2==mpol2+1) my_right2=1
+  if(my_right==mpar) my_right=0
+  if(my_right2==mpar) my_right2=0
+  if(my_right2==mpar+1) my_right2=1
 
-  my_left=GCLR-1
-  my_left2=GCLR-2
-  if(my_left==-1) my_left=mpol2-1
-  if(my_left2==-1) my_left2=mpol2-1
-  if(my_left2==-2) my_left2=mpol2-2
-  !Domain decomposition.
-  !A mpi process is responsible for the poloidal range [theta_start : theta_start+dtheta2]
-  theta_start = -pi+GCLR*dtheta2 
+  my_left = GCLR-1
+  my_left2 = GCLR-2
+  if(my_left==-1) my_left=mpar-1
+  if(my_left2==-1) my_left2=mpar-1
+  if(my_left2==-2) my_left2=mpar-2
 
   call read_and_process_equilibrium() !in cylindrical coordinates
   call construct_magnetic_coordinates()
@@ -143,7 +149,7 @@ program main
   vthermal(:) = sqrt(2*tgk0(:)*kev/mass_gk(:))
   if(myid==0) write(*,'(A30, 10ES16.4)') 'velocity unit (m/s) =', vu
   if(myid==0) write(*,'(A30, 10ES16.4)') 'vu/vthermal=', vu/vthermal
-  if(myid==0) write(*,*) 'mtor, nrad=', mtor, nrad
+  if(myid==0) write(*,*) 'mtor, nrad, mpar =', mtor, nrad, mpar
 
   call allocate_field_matrix(mtor, nrad)
 
@@ -178,29 +184,25 @@ program main
   dtao_fk = dt_omega_i_axis/omega_i_axis/tn_fk !time step in unit of tn_fk
   dt_second = dt_omega_i_axis/omega_i_axis
   if(myid==0) write(*,*) 'dt (seconds)=', dt_second
-  if(myid==0) write(*,'(A30, 10ES16.4)') 'cycltron angular frequency (MHz): ', baxis*charge_gk/mass_gk/10**6
-  if(myid==0) write(*,'(A30, 10ES16.4)') 'Parallel CFL condition: dz/(dt*vt)', r_axis*qpsi(1)*(twopi/mpol2)/(dt_second*vthermal)
-  if(myid==0) write(*,*) 'first radial sine harmonic: kr*rho_i=',pi/minor_r_width*rho_i
-  if(myid==0) write(*,*) 'R0/rho_i=',r_axis/rho_i
-  !if(myid==0) write(*,*) radcor_minor_r(0.5d0)
-  k_binormal1=nsegment*abs(qfunc(radcor_fixed))/minor_r_radcor(radcor_fixed)*rho_i
-  k_binormal2=nsegment*abs(baxis)/(GSpsi_prime*&
+  if(myid==0) write(*,'(A40, 10ES16.4)') 'Gyro-frequency (MHz): ', abs(baxis)*charge_gk/mass_gk/10**6
+  if(myid==0) write(*,'(A40, 10ES16.4)') 'Parallel CFL condition: dt*vt/dz', dt_second*vthermal/(r_axis*qpsi(1)*(twopi/mpar))
+  if(myid==0) write(*,*) 'First radial sine harmonic: kr*rho_i=', pi/minor_r_width*rho_i
+  k_binormal1 = nsegment*abs(qfunc(radcor_fixed))/minor_r_radcor(radcor_fixed)*rho_i
+  k_binormal2 = nsegment*abs(baxis)/(GSpsi_prime*&
        & (grad_psi(1,j_fixed)+grad_psi(mpol/2,j_fixed))/two)*rho_i
-  if(myid==0) write(*,*) 'k_binorm*rhoi1=',k_binormal1,'k_binorm*rhoi2=',k_binormal2
-  if(myid==0) write(*,*) 'number of radial harmonics that should be included (pi*shear0*k_binormal/kr1)=',&
-       & pi*0.84*k_binormal1/(pi/minor_r_width*rho_i)
-  !if(myid.eq.0) write(*,*) 'omega_star1/twopi (kHz)=', k_binormal1*kappa_ti*rho_i*omega_i_axis/twopi/1000._p_
-  !if(myid.eq.0) write(*,*) 'omega_star2/twopi (kHz)=', k_binormal2*kappa_ti*rho_i*omega_i_axis/twopi/1000._p_
+  if(myid==0) write(*,*) 'k_binorm*rhoi1=', k_binormal1, 'k_binorm*rhoi2=', k_binormal2
+  !if(myid==0) write(*,*) 'number of radial harmonics that should be included (pi*shear0*k_binormal/kr1)=',&
+  !     & pi*0.84*k_binormal1/(pi/minor_r_width*rho_i)
+
   if(myid==0) write(*,'(A25, 10ES16.4)') 'Species beta at axis=', tgk0*kev*ngk0/(baxis**2/(two*mu0))
   if(myid==0) write(*,'(A20, 10ES16.4)') 'tgk0 (keV)=', tgk0(:)
   if(myid==0) write(*,'(A20, 10ES16.4)') 'ngk0 (m^-3)=', ngk0(:)
   va0 = abs(baxis)/sqrt(mu0*mass_gk(1)*ngk0(1))
-  allocate(cs(nsm))
-  cs = sqrt(tgk0*kev/mass_gk)
+
   if(myid==0) write(*,*) 'VA0 (10^6m/s)=',va0/(1.d6)
-  if(myid==0) write(*,'(A30, 10ES16.4)') 'sound speed (10^6m/s)=',cs/(1.d6)
-  if(myid==0) write(*,'(A30, 10ES16.4)') 'VA0/Cs=',va0/cs
-  if(myid==0) write(*,'(A30, 10ES16.4)') 'R0/Cs (seconds) =', r_axis/cs(:)
+  if(myid==0) write(*,'(A30, 10ES16.4)') 'Thermal speed (10^6m/s)=', vthermal/(1.d6)
+  if(myid==0) write(*,'(A30, 10ES16.4)') 'VA0/vthermal=',va0/vthermal
+  if(myid==0) write(*,'(A30, 10ES16.4)') 'R0/vthermal (seconds) =', r_axis/vthermal(:)
   if(myid==0) write(*,*) 'compressional Alfven wave freq/omega_i=k_binorma*va0/omega_axis=',k_binormal1/rho_i*va0/omega_i_axis
 
   if(kstart==0 .and. fk_switch==1) then
@@ -265,11 +267,12 @@ program main
      call gyro_ring(ns, lost_gc(:,ns), xgc(:,ns), ygc(:,ns), zgc(:,ns), &
           & mu_gk(:,ns), x_ring(:,:,ns), y_ring(:,:,ns), z_ring(:,:,ns)) 
   enddo
-  
+
   if(myid==0) call system('mkdir -p ms') ! folder ms is used to store mode structure files
   call MPI_BARRIER(MPI_COMM_WORLD, ierr)
-  
+
   do kt = kstart+1, kend ! time-advancing
+     tsecond = kt*dt_second
      if(myid==numprocs/2 .and. mod(kt-1, 100)==0) write(*,*) 'time-step, phi(mtor/2,nrad/2) =', &
           & kt, potential(mtor/2, nrad/2,1)
      !---- first step of the 2nd order Runge-Kutta-------
@@ -352,8 +355,10 @@ program main
         call apara_resplit_and_weight_pullback(w_gk, apara_s, apara_h, ahx, ahy, ahz) !at the end of each time-step
      endif
 
+
      ! Particle pusher and field solver finish one full time step. The following are diagnosis:
      if(myid == id_writing_evolution .and. mod(kt-1, 10)==0) then
+        !call mode_evolution(kt*dt_second, potential(:,:,1)-antenna(:,:,1), mtor, nrad, file_unit1)
         call mode_evolution(kt*dt_second, potential(:,:,1), mtor, nrad, file_unit1)
         call mode_evolution(kt*dt_second, apara(:,:,1),     mtor, nrad, file_unit2)
         call nharmonic_evolution(kt*dt_second, phi_dft, file_unit3)
@@ -362,13 +367,15 @@ program main
 
      if(myid==0 .and. mod(kt-1, 100)==0) call bperp_perturbation(kt*dt_second, file_unit5) 
 
-     if(TCLR==0 .and. kt>20000 .and. mod((kt-1), iplot_mode_structure)==0) then
+     if(TCLR==0 .and. mod((kt-1), iplot_mode_structure)==0) then
         ! call mode_structure_in_xy_plane(kt, GCLR, potential(:,:,1), 'Phi')
         ! call mode_structure_in_xy_plane(kt, GCLR, apara(:,:,1), 'Apara')
         ! call mode_structure_in_xz_plane(kt, potential(:,:,1), 'Phi')
         ! call mode_structure_in_xz_plane(kt, apara(:,:,1), 'Apara')
         ! call mode_structure_in_yz_plane(kt, potential(:,:,:), 'Phi')
         ! call mode_structure_in_yz_plane(kt, apara(:,:,:), 'Apara')
+
+        !call mode_structure_in_poloidal_plane(kt, potential(:,:, :)-antenna, 'Phi')
         call mode_structure_in_poloidal_plane(kt, potential(:,:, :), 'Phi')
         call mode_structure_in_poloidal_plane(kt, apara(:,:, :), 'Apara')
         ! call nharmonics_in_poloidal_plane(kt, phi_dft, 'Phi')
@@ -402,9 +409,9 @@ subroutine read_parameters()
        &  poloidal_angle_type,iplot_mode_structure,&
        & filter_radial, store_restart_data, &
        & fk_switch, space_charge_switch, adiabatic_electrons, &
-       &   diagnosis, ismooth, nh_min, nh_max
-  use magnetic_coordinates, only: nrad,mpol,mtor,pfn_inner, pfn_bdry,nsegment
-  use domain_decomposition, only: ntube,myid
+       &   diagnosis, ismooth, nh_min, nh_max, polarization_method, mfilter
+  use magnetic_coordinates, only: nrad,mpol,mtor, mpar, pfn_inner, pfn_bdry,nsegment
+  use domain_decomposition, only: myid
   use gk_module, only : nsm
   use mpi
   implicit none
@@ -412,9 +419,9 @@ subroutine read_parameters()
   namelist/control_nmlt/kstart,kend,dt_omega_i_axis, &
        & iplot_mode_structure,&
        & filter_radial, store_restart_data, &
-       & poloidal_angle_type,nsegment, nrad, mpol,mtor,pfn_inner, pfn_bdry,ntube, &
+       & poloidal_angle_type,nsegment, nrad, mpol,mtor,pfn_inner, pfn_bdry, mpar, &
        & fk_switch, space_charge_switch, adiabatic_electrons, &
-       &  nh_min, nh_max, diagnosis, ismooth, nsm
+       &  nh_min, nh_max, diagnosis, ismooth, nsm, polarization_method, mfilter
 
   open(newunit=u,file='input.nmlt')
   read(u,control_nmlt)

@@ -10,12 +10,12 @@
   nrad = 258
   mtor = 16 !must be an even number (required by the FFT algorithm I used)
   mpol = 129 !equilibrium poloidal gridpoint number, be odd, and (mpol-1)/(numproc/ntube) must be an integer
-  ntube = 16
+  mpar = 32
   poloidal_angle_type='straight-field-line'
   !poloidal_angle_type='equal-arc'
   !poloidal_angle_type = 'equal-volume'
   !poloidal_angle_type='Boozer'
-  nsegment = 3 !toroidal box is 1/nsegment of the full torus
+  nsegment = 6 !toroidal box is 1/nsegment of the full torus
   nh_min = 1  !non-negative
   nh_max = 1  !non-negative
   dt_omega_i_axis = 4.0d0 !time step size
@@ -29,6 +29,8 @@
   store_restart_data = .false.
   fk_switch = 0
   adiabatic_electrons = .false.
+  polarization_method = 'spectrum' 
+  mfilter = .true.
   nsm = 3 !number of gk species
   /
 

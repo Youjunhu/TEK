@@ -1,7 +1,7 @@
 module ampere
   use constants, only: p_
   implicit none
-  complex(p_), allocatable :: mpara(:,:,:) !coefficient matrix for parallel Ampere's law
+  complex(p_), allocatable :: mAmpere(:,:,:) !coefficient matrix for parallel Ampere's law
   integer, allocatable :: ipiv(:,:)
 
 contains
@@ -21,7 +21,7 @@ contains
     complex(p_) :: s, part1, part2
 
     nx = nrad - 1
-    allocate(mpara(nx-1,nx-1,0:nh_max))
+    allocate(mAmpere(nx-1,nx-1,0:nh_max))
     allocate(ipiv(nx-1,0:nh_max))
 
     do ns = 1, nsm
@@ -55,17 +55,17 @@ contains
                 part2 = -ii*n*twopi/ly*(m*pi/lx)*c3 !- c4*m*pi/lx
                 s = s + sin(jp*m*pi/nx) * (part1*sin(j*m*pi/nx) + part2*cos(j*m*pi/nx))
              enddo
-             mpara(j,jp,n) = s*two/nx  
+             mAmpere(j,jp,n) = s*two/nx  
           enddo
        enddo
     enddo
 
     do j = 1, nx-1
-       mpara(j,j,:) = mpara(j,j,:) - skin(j)
+       mAmpere(j,j,:) = mAmpere(j,j,:) - skin(j)
     enddo
 
     do n = 0, nh_max !for each toroidal Fourier component
-       call ZGETRF(nx-1, nx-1, mpara(:,:,n), nx-1, ipiv(:,n), info) !LU factorize the radial coeff matrix
+       call ZGETRF(nx-1, nx-1, mAmpere(:,:,n), nx-1, ipiv(:,n), info) !LU factorize the radial coeff matrix
     enddo
   end subroutine prepare_ampere_matrix
 
@@ -75,8 +75,8 @@ contains
     use normalizing, only: vu, tu, qu, nu
     use magnetic_coordinates, only: m=>mtor, n=>nrad, dtor,dradcor, jacobian
     use gk_module, only: w_unit
-    use control_parameters, only: ismooth, nh_min, nh_max
-    use derivatives_in_xyz, only: x_derivative0, x_derivative, y_derivative, z_derivative, z_derivative0
+    use control_parameters, only: ismooth, nh_min, nh_max, mfilter
+    use derivatives_in_xyz, only: x_derivative, y_derivative, z_derivative, z_derivative0
     use communication_connection, only: merge_source, update_scalar_at_right_boundary, &
          & update_derivatives_at_right_boundary
     use transform_module
@@ -118,14 +118,16 @@ contains
     ! enddo
 
     ah_dft = 0._p_ !only some harmonics are solved, others are assumed to be zero
-    call solver_toroidal_mode_number_parallel(mpara, IPIV, rhs_dft, ah_dft)
+    call solver_toroidal_mode_number_parallel(mAmpere, IPIV, rhs_dft, ah_dft)
     do kn = 1, nh_max ! negative toroidal mode number
        ah_dft(m-kn,:) = conjg(ah_dft(kn,:)) 
     enddo
-
-    do kn = nh_min, nh_max
-       !call mfilter_for_each_n(ah_dft(kn,:), n-2, kn)
-    enddo
+    
+    if(mfilter .eqv. .true.) then
+       do kn = 1, nh_max
+          call mfilter_for_each_n(ah_dft(kn,:), n-2, kn)
+       enddo
+    endif
     do kn = 1, nh_max ! negative toroidal mode number
        ah_dft(m-kn,:) = conjg(ah_dft(kn,:)) 
     enddo
@@ -140,19 +142,19 @@ contains
 
     if(isolve==1) then
        call x_derivative  (apara_h(:,:,1), ahx(:,:,1))
-       !call x_derivative0(ah_dft, ahx_dft) ! might be more accurate than taking x derivative in real space
-       !call oned_backward_DFT_parallel_version(ahx_dft, ahx(:, 2:n-1, 1), m, n-2)
        call y_derivative(apara_h(:,:,1), ahy(:,:,1))
        call z_derivative  (apara_h(:,:,:), ahz(:,:,1))
        call update_derivatives_at_right_boundary(ahx, ahy, ahz)
     endif
 
     apara = apara_h + apara_s
-
     call oned_DFT_parallel_version(apara(:, 2:n-1, 1), apara_dft, m, n-2) !DFT along the first dimension
-    do kn = nh_min, nh_max
-       !call mfilter_for_each_n(apara_dft(kn,:), n-2, kn)
-    enddo
+    
+    if(mfilter .eqv. .true.) then
+       do kn = 1, nh_max
+          call mfilter_for_each_n(apara_dft(kn,:), n-2, kn)
+       enddo
+    endif
     do kn = 1, nh_max ! negative toroidal mode number
        apara_dft(m-kn,:) = conjg(apara_dft(kn,:)) 
     enddo
@@ -164,8 +166,6 @@ contains
     call update_scalar_at_right_boundary(apara)
 
     call x_derivative(apara(:,:,1), ax(:,:,1))
-    ! call x_derivative0(apara_dft, ax_dft) !more accurate than taking x derivative in real space
-    ! call oned_backward_DFT_parallel_version(ax_dft, ax(:, 2:n-1, 1), m, n-2)
     call y_derivative(apara(:,:,1), ay(:,:,1))
     call z_derivative(apara(:,:,:), az(:,:,1))
     call update_derivatives_at_right_boundary(ax, ay, az)

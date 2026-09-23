@@ -1,0 +1,73 @@
+  &magnetic_configuration
+  gfile_name='cbc/gfile_circular' !G-eqdsk (tokamak equilibrium) file
+  reverse_tf = .true. !If .true., reverse the direction of the toroidal field specified in gfile
+  reverse_ip = .true. !If .true., reverse the direction of the toroidal current specified in gfile
+  /
+
+  &control_nmlt
+  pfn_inner = 0.05
+  pfn_bdry = 0.6
+  nrad = 258
+  mtor = 16 !must be an even number (required by the FFT algorithm I used)
+  mpol = 129 !equilibrium poloidal gridpoint number
+  mpar = 16 !(mpol-1)/mpar should be an integer
+  poloidal_angle_type='straight-field-line'
+  !poloidal_angle_type='equal-arc'
+  !poloidal_angle_type = 'equal-volume'
+  !poloidal_angle_type='Boozer'
+  nsegment = 19 !toroidal box is 1/nsegment of the full torus
+  nh_min = 0  !non-negative
+  nh_max = 1  !non-negative
+  dt_omega_i_axis = 1.0d0 !time step size
+  kstart = 0
+  kend = 32001
+  filter_radial = .false.
+  ismooth = 0
+  space_charge_switch = 0
+  diagnosis = .false.
+  iplot_mode_structure = 100
+  store_restart_data = .false.
+  fk_switch = 0
+  adiabatic_electrons = .false.
+  polarization_method = 'spectrum'
+  mfilter = .false.
+  nsm = 2 !number of gk species
+  /
+
+  &gk_nmlt !gyrokinetic species
+  mass_gk(:) = 3.3452d-27,    18.2188d-31  !kg 
+  charge_gk(:) = 1,  -1 !in unit of elementary_charege
+  nm_gk_per_cell(:) = 64, 64
+  gk_flr(:) = .true., .false.
+  density_file = "cbc/ni.txt", "cbc/ni.txt"
+  density_unit = 2.0, 2.0 !value in m^(-3)
+  density_radcor = "poloidal-flux", "poloidal-flux"
+  temperature_file = "cbc/ti.txt", "cbc/ti.txt"
+  temperature_unit = 1.6022d-16, 1.6022d-16 !value in Joule
+  temperature_radcor = "poloidal-flux", "poloidal-flux"
+  gk_spatial_loading_scheme = 1, 1 !1=>uniform in (psi,theta,alpha) coordinates; 2=>uniform in real space
+  gk_velocity_loading_scheme = 2, 2
+  gk_nonlinear = 1, 1
+  /
+
+  &adiabatic_electron_nmlt
+  density_file = "cbc/ne.txt"
+  density_unit = 1.0 !value in m^(-3)
+  density_radcor = "poloidal-flux"
+  temperature_file = "cbc/te.txt"
+  temperature_unit = 1.6022d-16 !value in Joule
+  temperature_radcor = "poloidal-flux"
+  /
+  
+  &fk_nmlt !fully kinetic species
+  mass_i = 3.3452d-27 !kg 
+  charge_i = 1.6022d-19 !Coulumb
+  ti0 = 2.14d0 !in kev, a typical value of ion temperature in the compuational region
+  ni0 = 4.66d19 !unit m^-3
+  kappa_ni = 1.3174 !in unit Ln^-1
+  kappa_ti = 4.1317 !in unit Ln^-1
+  nmarker_i_per_cell = 1  ! total number of ion markers (including all the particles in all the processors).
+  ion_spatial_loading_scheme = 2 !1>uniform in (psi,theta,alpha) coordinates; 2=>uniform in real space
+  ion_velocity_loading_scheme = 2 !1=>uniform in cartesian (vx,vy,vz) coordinates; 2=>Isotropic Gaussian in (vx,vy,vz)
+  fk_nonlinear = 0
+  /
