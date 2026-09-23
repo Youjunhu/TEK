@@ -167,7 +167,7 @@ contains
     allocate(ahz(m,n,2)) !dApar_h/dz
     allocate(apara_dft(0:m-1, n-2))
 
-    !allocate(antenna(m, n,2), source=zero) 
+    allocate(antenna(m, n,2), source=zero) 
     allocate(ef_cyl_r_left(m+1,n))
     allocate(ef_cyl_z_left(m+1,n))
     allocate(ef_cyl_phi_left(m+1,n))

@@ -157,7 +157,7 @@ contains
        call smoothing_along_field_line_core(potential(:,:,1))
     enddo
 
-    !call add_antenna(potential) !testing antenna excitation, comment out this line if you do not need
+    call add_antenna(potential) !testing antenna excitation, comment out this line if you do not need
     
     call x_derivative(potential(:,:,1), phix(:,:,1))
     phix(:, 1, 1) = 0; phix(:, n, 1) = 0
@@ -171,7 +171,7 @@ contains
   end subroutine solve_poisson
 
 
-  subroutine add_antenna(potential)
+  subroutine add_antenna(potential) !modify this subroutine to get the antenna you want
     use constants, only: p_, twopi
     use magnetic_coordinates, only: xgrid, tfn, ygrid, nsegment
     use domain_decomposition, only: theta_start, dtheta2

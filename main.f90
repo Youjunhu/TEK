@@ -358,8 +358,8 @@ program main
 
      ! Particle pusher and field solver finish one full time step. The following are diagnosis:
      if(myid == id_writing_evolution .and. mod(kt-1, 10)==0) then
-        !call mode_evolution(kt*dt_second, potential(:,:,1)-antenna(:,:,1), mtor, nrad, file_unit1)
-        call mode_evolution(kt*dt_second, potential(:,:,1), mtor, nrad, file_unit1)
+        call mode_evolution(kt*dt_second, potential(:,:,1)-antenna(:,:,1), mtor, nrad, file_unit1)
+        !call mode_evolution(kt*dt_second, potential(:,:,1), mtor, nrad, file_unit1)
         call mode_evolution(kt*dt_second, apara(:,:,1),     mtor, nrad, file_unit2)
         call nharmonic_evolution(kt*dt_second, phi_dft, file_unit3)
         call nharmonic_evolution(kt*dt_second, apara_dft, file_unit4) 
@@ -375,8 +375,8 @@ program main
         ! call mode_structure_in_yz_plane(kt, potential(:,:,:), 'Phi')
         ! call mode_structure_in_yz_plane(kt, apara(:,:,:), 'Apara')
 
-        !call mode_structure_in_poloidal_plane(kt, potential(:,:, :)-antenna, 'Phi')
-        call mode_structure_in_poloidal_plane(kt, potential(:,:, :), 'Phi')
+        call mode_structure_in_poloidal_plane(kt, potential(:,:, :)-antenna, 'Phi')
+        !call mode_structure_in_poloidal_plane(kt, potential(:,:, :), 'Phi')
         call mode_structure_in_poloidal_plane(kt, apara(:,:, :), 'Apara')
         ! call nharmonics_in_poloidal_plane(kt, phi_dft, 'Phi')
         ! call nharmonics_in_poloidal_plane(kt, apara_dft, 'Apara')
