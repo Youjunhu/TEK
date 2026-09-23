@@ -1,26 +1,26 @@
   &magnetic_configuration
-  gfile_name = 'itpa_ep/gfile_itpa_ep513x513'
-  reverse_tf = .false. 
-  reverse_ip = .false.
+  gfile_name='cbc/gfile_circular' !G-eqdsk (tokamak equilibrium) file
+  reverse_tf = .true. !If .true., reverse the direction of the toroidal field specified in gfile
+  reverse_ip = .true. !If .true., reverse the direction of the toroidal current specified in gfile
   /
 
   &control_nmlt
-  pfn_inner = 0.02
-  pfn_bdry = 0.8
+  pfn_inner = 0.1
+  pfn_bdry = 0.6
   nrad = 258
   mtor = 16 !must be an even number (required by the FFT algorithm I used)
-  mpol = 129 !equilibrium poloidal gridpoint number, be odd, and (mpol-1)/(numproc/ntube) must be an integer
-  ntube = 16
+  mpol = 128 !equilibrium poloidal gridpoint number in [-pi:pi], and (mpol-1)/mpar must be an integer
+  mpar = 16 ! number of parallel (z) gridpoints
   poloidal_angle_type='straight-field-line'
   !poloidal_angle_type='equal-arc'
   !poloidal_angle_type = 'equal-volume'
   !poloidal_angle_type='Boozer'
-  nsegment = 3 !toroidal box is 1/nsegment of the full torus
-  nh_min = 1  !non-negative
+  nsegment = 19 !toroidal box is 1/nsegment of the full torus
+  nh_min = 0  !non-negative
   nh_max = 1  !non-negative
-  dt_omega_i_axis = 4.0d0 !time step size
+  dt_omega_i_axis = 1.0d0 !time step size
   kstart = 0
-  kend = 40001
+  kend = 1
   filter_radial = .false.
   ismooth = 0
   space_charge_switch = 0
@@ -29,23 +29,25 @@
   store_restart_data = .false.
   fk_switch = 0
   adiabatic_electrons = .false.
-  nsm = 3 !number of gk species
+  polarization_method = 'spectrum'
+  mfilter = .false.
+  nsm = 2 !number of gk species
   /
 
   &gk_nmlt !gyrokinetic species
-  mass_gk(:) = 1.6735575d-27  3.3444946908181286-27  9.1093837d-31  !kg 
-  charge_gk(:) = 1    1  -1 !in unit of elementary_charege
-  nm_gk_per_cell(:) = 64 64 64
-  gk_flr(:) = .true. .true. .false.
-  density_file ="itpa_ep/ni.txt"  "itpa_ep/nf.txt"  "itpa_ep/ne.txt"
-  density_unit = 1.d0 1.d0 1.d0 !value in m^(-3)
-  density_radcor = "toroidal-flux-sqrt", "toroidal-flux-sqrt" "toroidal-flux-sqrt"
-  temperature_file = "itpa_ep/ti.txt"  "itpa_ep/tf400.txt" "itpa_ep/te.txt"
-  temperature_unit = 1.60217663d-16  1.60217663d-16 1.60217663d-16 !value in Joule
-  temperature_radcor = "toroidal-flux-sqrt", "toroidal-flux-sqrt" "toroidal-flux-sqrt"
-  gk_spatial_loading_scheme = 1, 1, 1 !1=>uniform in (psi,theta,alpha) coordinates; 2=>uniform in real space
-  gk_velocity_loading_scheme = 2, 2, 2
-  gk_nonlinear = 0, 0, 0
+  mass_gk(:) = 3.3452d-27,    18.2188d-31  !kg 
+  charge_gk(:) = 1,  -1 !in unit of elementary_charege
+  nm_gk_per_cell(:) = 14, 14
+  gk_flr(:) = .true., .false.
+  density_file = "cbc/ni.txt", "cbc/ni.txt"
+  density_unit = 2.0, 2.0 !value in m^(-3)
+  density_radcor = "poloidal-flux", "poloidal-flux"
+  temperature_file = "cbc/ti.txt", "cbc/ti.txt"
+  temperature_unit = 1.6022d-16, 1.6022d-16 !value in Joule
+  temperature_radcor = "poloidal-flux", "poloidal-flux"
+  gk_spatial_loading_scheme = 1, 1 !1=>uniform in (psi,theta,alpha) coordinates; 2=>uniform in real space
+  gk_velocity_loading_scheme = 2, 2
+  gk_nonlinear = 1, 1
   /
 
   &adiabatic_electron_nmlt
@@ -65,7 +67,7 @@
   kappa_ni = 1.3174 !in unit Ln^-1
   kappa_ti = 4.1317 !in unit Ln^-1
   nmarker_i_per_cell = 1  ! total number of ion markers (including all the particles in all the processors).
-  ion_spatial_loading_scheme = 1 !1>uniform in (psi,theta,alpha) coordinates; 2=>uniform in real space
+  ion_spatial_loading_scheme = 2 !1>uniform in (psi,theta,alpha) coordinates; 2=>uniform in real space
   ion_velocity_loading_scheme = 2 !1=>uniform in cartesian (vx,vy,vz) coordinates; 2=>Isotropic Gaussian in (vx,vy,vz)
   fk_nonlinear = 0
   /
